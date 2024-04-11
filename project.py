@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-__author__ = "Jason Gardner"
-__credits__ = ["Jason Gardner"]
+__author__ = ["Jason Gardner", "Tamar Dexheimer", "Conor Nolan"]
+__credits__ = ["Jason Gardner", "Tamar Dexheimer", "Conor Nolan"]
 __license__ = "GPL"
-__version__ = "1.0.1"
-__maintainer__ = "Jason Gardner"
-__email__ = "n01480000@unf.edu"
+__version__ = "0.0.1"
+__maintainer__ = ["Jason Gardner", "Tamar Dexheimer", "Conor Nolan"]
+__email__ = ["n01480000@unf.edu"]
 __status__ = "Development"
 
 import numpy as np
@@ -34,7 +34,6 @@ DEBUG = True
 SEED = 42
 LOG_FORMAT_STRING = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
 RMSPROP_CLIP = 10.0
-INPUT_SHAPE = (256)
 
 np.random.seed(SEED)
 
@@ -42,6 +41,10 @@ class Data:
     def __init__(self, test: bool = False) -> None:
         self.test = test
         self.x_train, self.y_train, self.x_test, self.y_test = self._load_data()
+        self.x_train = self.x_train[10:20]
+        self.y_train = self.y_train[10:20]
+        self.x_test = self.x_test[10:20]
+        self.y_test = self.y_test[10:20]
         
     def _load_data(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         '''
@@ -80,7 +83,7 @@ class Data:
         (x_train, y_train), (x_test, y_test) = imdb.load_data()
         logger.info("Data loaded")
         
-        return x_train, y_train, x_test, y_test
+        return pd.DataFrame(x_train), pd.DataFrame(y_train), pd.DataFrame(x_test), pd.DataFrame(y_test)
 
     def _process_data(self) -> None:
         '''
@@ -216,7 +219,7 @@ class Model:
 class Logging:
     def __init__(self, logger_name: str = '__main__') -> None:
         self.logger = logging.getLogger(logger_name)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
         self.logger.addHandler(self.get_console_handler())
         self.logger.propagate = False
         self.logger.info(f"Logging initialized -- {logger_name}")
@@ -279,7 +282,7 @@ class Agent:
         self.model = self.M.model
 
     def run(self) -> None:
-        self.model.fit(self.x_train, self.y_train, epochs = 10, batch_size = 32, verbose = 0, validation_data = (self.x_test, self.y_test))
+        self.model.fit(self.x_train, self.y_train, epochs = 10, batch_size = 32, verbose = 1, validation_data = (self.x_test, self.y_test))
         self.model.save_model()
         self.model.evaluate(self.x_test, self.y_test)
         self.model.predict(self.x_test)
