@@ -26,6 +26,9 @@ from sklearn.linear_model import LogisticRegression as lr
 from sklearn.neighbors import KNeighborsClassifier as knn
 from sklearn.ensemble import RandomForestClassifier as rfcn
 from sklearn.tree import DecisionTreeClassifier as dtc
+#https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
+from sklearn.metrics import f1_score
+from sklearn.metrics import accuracy_score
 import re
 import sys, os, warnings
 
@@ -36,6 +39,8 @@ if not sys.warnoptions:
 SEED = 42
 LOG_FORMAT_STRING = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
 RMSPROP_CLIP = 10.0
+AVERAGE = "weighted"
+METRICS = "accuracy"
 
 np.random.seed(SEED)
 
@@ -137,9 +142,13 @@ class Data:
 
 class Model:
     def __init__(self, state : dict = None, input_width: int = None) -> None:
+        self.name = "RNN"
         self.state = state
         self.input_width = input_width
         self.uuid = self.state['uuid']
+        self.x_train, self.x_test, self.y_train, self.y_test = data
+        self.predictions = None
+        self.model_score = None
 
         if self.state['uuid'] is not None:
             logger.info(f"Loading model from ./model/{self.uuid}")
@@ -151,6 +160,15 @@ class Model:
             logger.info(f"New UUID: {self.uuid}")
             logger.info(f"Initializing new model")
             self.model = self.init_model()
+            
+    def fit(self) -> None:
+        self.model.fit(self.x_train, self.y_train, epochs = 10, batch_size = 32, verbose = 1, validation_data = (self.x_test, self.y_test))
+    
+    def predict(self) -> None:
+        self.predictions =  self.model.predict(self.x_test)
+    
+    def score(self) -> None:
+        self.model_score = self.model.evaluate(self.x_test, self.y_test)
 
     def init_model(self) -> tf.keras.Model:
         logger.info("Initializing model")
@@ -165,7 +183,7 @@ class Model:
         loss_function = tf.keras.losses.Huber()
         # self.loss_function = tf.keras.losses.mean_squared_error
         # self.loss_function = tf.keras.losses.binary_crossentropy
-        model.compile(optimizer = optimizer, loss = loss_function)
+        model.compile(optimizer = optimizer, loss = loss_function, metrics = [METRICS])
         logger.info("Model initialized")
         
         return model
@@ -175,11 +193,12 @@ class Model:
         logger.info(f"Creating directory './models/{self.uuid}'")
         results_dir_path = f"./models/{self.uuid}"
         if not os.path.exists(results_dir_path):
-            try:
-                os.mkdir('./models')
-            except OSError:
-                logger.warning(f"Creation of the directory {'./models'} failed")
-                exit(1)
+            if not os.path.exists('./models'):
+                try:
+                    os.mkdir('./models')
+                except OSError:
+                    logger.warning(f"Creation of the directory {'./models'} failed")
+                    exit(1)
             try:
                 os.mkdir(results_dir_path)
             except OSError:
@@ -277,7 +296,7 @@ class Agent:
                            ("Decision Tree", dtc()),
                            ("Logistic Regression", lr()),
                            ("Random Forest", rfcn()),
-                           ("KNN", knn())]
+                           ("K-Nearest Neighbors", knn())]
         self.uuid = state['uuid']
         self.input_width = input_width
         self.optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
@@ -290,11 +309,12 @@ class Agent:
         self.model = self.M.model
 
     def run(self) -> None:
-        self.model.fit(self.x_train, self.y_train, epochs = 10, batch_size = 32, verbose = 1, validation_data = (self.x_test, self.y_test))
+        self.M.fit()
+        self.M.predict()
         self.M.save_model()
-        self.model.evaluate(self.x_test, self.y_test)
-        self.model.predict(self.x_test)
         self.model.summary()
+        self.M.score()
+        logger.info(f"{self.M.name}:  Loss - {self.M.model_score[0]}, Test Data Accuracy - {self.M.model_score[1]}")
 
 ##########################
 ###  ARGUMENT PARSING  ###
@@ -303,7 +323,6 @@ class Agent:
 class Parsing:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args : dict = args
-        self.model : tf.keras.Model = None
         self.data : dict = {}
         for key, value in vars(args).items():
                 self.data[key] = value
