@@ -20,16 +20,18 @@ import uuid
 import pickle
 from tensorflow.keras import layers
 from tensorflow.keras.datasets import imdb as imdb
+from tensorflow.keras.models import Sequential
+from sklearn.models.naive_bayes import MultinomialNB
+from sklearn.models import DecisionTreeClassifier, LogisticRegression, RandomForestClassifier, KNeighborsClassifier
 import re
 
 TEST = False
 DEBUG = True
 
 SEED = 42
-TEST_RATIO= 0.2
 LOG_FORMAT_STRING = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
 RMSPROP_CLIP = 10.0
-INPUT_SHAPE = (43)
+INPUT_SHAPE = (256)
 
 np.random.seed(SEED)
 
@@ -78,7 +80,12 @@ class Data:
         return x_train, y_train, x_test, y_test
 
     def _process_data(self) -> None:
-        print(self.x_train)
+        '''
+        This code needs work if we're going to manually process the data.
+        Right now, using the built-in functions is the best way to go.
+        
+        TODO: Lowercase all words, remove punctuation, remove HTML tags, remove stopwords, etc.
+        '''
         logger.info("Processing data")
         
         logger.info("Removing HTML tags from data")
@@ -118,9 +125,9 @@ class Data:
         
         return self.x_train, self.x_test, self.y_train, self.y_test
     
-###############
-###  MODEL  ###
-###############
+################
+###  MODELS  ###
+################
 
 class Model:
     def __init__(self, state : dict = None, size: int = None) -> None:
@@ -129,7 +136,7 @@ class Model:
         self.uuid = self.state['uuid']
 
         if self.state['uuid'] is not None:
-            print(f"Loading model from {self.uuid}")
+            logger.info(f"Loading model from ./model/{self.uuid}")
             self.load_model()
         else:
             logger.info("No model UUID provided. Generating new UUID")
@@ -235,8 +242,8 @@ class Logging:
    
 class Arguments(argparse.ArgumentParser):
     def __init__(self) -> None:
-        super().__init__(prog = "DQPOMDP", 
-                        description = "Train an LSTM model on the NF-UQ-NIDS-v2 dataset to detect network intrusions",
+        super().__init__(prog = "project", 
+                        description = "Train various models for sentiment analysis on the IMDB dataset",
                         allow_abbrev = True)
         
         self.add_argument("-u", 
@@ -257,9 +264,18 @@ class Arguments(argparse.ArgumentParser):
       
 class Agent:
     def __init__(self, state: dict, data : tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]) -> None:
+        self.algorithms = [("Naive Bayes", MultinomialNB()),
+                    ("Decision Tree", DecisionTreeClassifier()),
+                    ("Logistic Regression", LogisticRegression()),
+                    ("Random Forest", RandomForestClassifier()),
+                    ("KNN", KNeighborsClassifier()),
+                    ("Neural Network", Sequential())]
         self.uuid = state['uuid']
         self.optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
+        # self.optimizer = tf.keras.optimizers.Adadelta(learning_rate = 0.1, ema_momentum = 0.95)
+        # self.optimizer = tf.keras.optimizers.Adam(lr=1e-3)
         self.loss_function = tf.keras.losses.Huber()
+        # self.loss_function = tf.keras.losses.mean_squared_error
         self.x_train, self.x_test, self.y_train, self.y_test = data
         self.M = Model(state = parser.data, size = len(self.y_train))
         self.model = self.M.model
@@ -267,7 +283,6 @@ class Agent:
         self.debug = None
 
     def run(self) -> None:
-        print(f"Data: {self.x_train.shape}")
         self.model.fit(self.x_train, self.y_train, epochs = 10, batch_size = 32, verbose = 1, validation_data = (self.x_test, self.y_test))
         self.model.save_model()
         self.model.evaluate(self.x_test, self.y_test)
