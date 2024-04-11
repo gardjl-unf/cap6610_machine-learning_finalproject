@@ -18,7 +18,7 @@ import sys
 import json
 import uuid
 import pickle
-from tensorflow.keras.layers import LSTM, SimpleRNN, Embedding, Dense
+from tensorflow.keras.layers import LSTM, SimpleRNN, Embedding, Dense, Conv1D
 from tensorflow.keras.datasets import imdb as imdb
 from tensorflow.keras.models import Sequential
 from sklearn.naive_bayes import MultinomialNB
@@ -27,9 +27,11 @@ from sklearn.neighbors import KNeighborsClassifier as knn
 from sklearn.ensemble import RandomForestClassifier as rfcn
 from sklearn.tree import DecisionTreeClassifier as dtc
 import re
+import sys, os, warnings
 
-TEST = False
-DEBUG = True
+if not sys.warnoptions:
+    warnings.simplefilter("ignore")
+    os.environ["PYTHONWARNINGS"] = "ignore"
 
 SEED = 42
 LOG_FORMAT_STRING = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
@@ -141,37 +143,43 @@ class Model:
 
         if self.state['uuid'] is not None:
             logger.info(f"Loading model from ./model/{self.uuid}")
-            self.load_model()
+            self.model = self.load_model()
         else:
             logger.info("No model UUID provided. Generating new UUID")
             self.state['uuid'] = str(uuid.uuid4())
             self.uuid = self.state['uuid']
             logger.info(f"New UUID: {self.uuid}")
             logger.info(f"Initializing new model")
-            self.init_model()
+            self.model = self.init_model()
 
     def init_model(self) -> tf.keras.Model:
         logger.info("Initializing model")
-        self.model = Sequential()
-        self.model.add(Embedding(input_dim=self.input_width, output_dim=128))
-        self.model.add(SimpleRNN(units=128, return_sequences=True))
-        self.model.add(SimpleRNN(units=128))
-        self.model.add(Dense(units=1, activation='sigmoid'))
+        model = Sequential([Embedding(input_dim = self.input_width, output_dim = 128),
+                            SimpleRNN(units = 128, return_sequences = True),
+                            SimpleRNN(units = 128),
+                            Dense(units = 1, activation = 'sigmoid')])
       
-        self.optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
+        optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
         # self.optimizer = tf.keras.optimizers.Adadelta(learning_rate = 0.1, ema_momentum = 0.95)
         # self.optimizer = tf.keras.optimizers.Adam(lr=1e-3)
-        self.loss_function = tf.keras.losses.Huber()
+        loss_function = tf.keras.losses.Huber()
         # self.loss_function = tf.keras.losses.mean_squared_error
         # self.loss_function = tf.keras.losses.binary_crossentropy
-        self.model.compile(optimizer = self.optimizer, loss = self.loss_function)
+        model.compile(optimizer = optimizer, loss = loss_function)
         logger.info("Model initialized")
+        
+        return model
            
     def save_model(self) -> None:
         logger.info(f"Saving model to './models/{self.uuid}/model.h5'")
         logger.info(f"Creating directory './models/{self.uuid}'")
         results_dir_path = f"./models/{self.uuid}"
         if not os.path.exists(results_dir_path):
+            try:
+                os.mkdir('./models')
+            except OSError:
+                logger.warning(f"Creation of the directory {'./models'} failed")
+                exit(1)
             try:
                 os.mkdir(results_dir_path)
             except OSError:
@@ -194,9 +202,9 @@ class Model:
             logger.info(f"Saved state to './models/{self.uuid}/state.json'")
 
     def load_model(self) -> tf.keras.Model:
-        self.model = tf.keras.Model()
+        model = tf.keras.Model()
         logger.info(f"Loading model from './models/{self.uuid}/model.weights.h5'")
-        self.model.load_weights(f'./models/{self.uuid}/model.weights.h5')
+        model.load_weights(f'./models/{self.uuid}/model.weights.h5')
         logger.info(f"Loaded model weights from './models/{self.uuid}/model.weights.h5'")
         
         with open(f"./models/{self.uuid}/numpy_random_state.pkl", 'rb') as f:
@@ -210,7 +218,7 @@ class Model:
                 self.state = json.load(f)
                 logger.info(f"Loaded state from './models/{self.uuid}/state.json'")     
 
-        return self.model
+        return model
 
 ###############
 ### LOGGING ###
@@ -283,7 +291,7 @@ class Agent:
 
     def run(self) -> None:
         self.model.fit(self.x_train, self.y_train, epochs = 10, batch_size = 32, verbose = 1, validation_data = (self.x_test, self.y_test))
-        self.model.save_model()
+        self.M.save_model()
         self.model.evaluate(self.x_test, self.y_test)
         self.model.predict(self.x_test)
         self.model.summary()
