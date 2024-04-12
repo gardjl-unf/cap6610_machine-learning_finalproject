@@ -21,14 +21,14 @@ import pickle
 from tensorflow.keras.layers import LSTM, SimpleRNN, Embedding, Dense, Conv1D
 from tensorflow.keras.datasets import imdb as imdb
 from tensorflow.keras.models import Sequential
-from sklearn.naive_bayes import MultinomialNB
+from sklearn.naive_bayes import MultinomialNB as mnb
 from sklearn.linear_model import LogisticRegression as lr
 from sklearn.neighbors import KNeighborsClassifier as knn
 from sklearn.ensemble import RandomForestClassifier as rfcn
 from sklearn.tree import DecisionTreeClassifier as dtc
+from sklearn.preprocessing import StandardScaler as scaler
 #https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
-from sklearn.metrics import f1_score
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
 import re
 import sys, os, warnings
 
@@ -36,13 +36,13 @@ if not sys.warnoptions:
     warnings.simplefilter("ignore")
     os.environ["PYTHONWARNINGS"] = "ignore"
 
-SEED = 42
 LOG_FORMAT_STRING = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
 RMSPROP_CLIP = 10.0
 AVERAGE = "weighted"
 METRICS = "accuracy"
-
-np.random.seed(SEED)
+BATCH_SIZE = 32
+EPOCHS = 10
+INTERNAL_DIMENSION = 128
 
 class Data:
     def __init__(self, test: bool = False) -> None:
@@ -86,9 +86,10 @@ class Data:
 
 
         '''
-        logger.info("Loading data")
+        
+        logger.info("Loading data from keras.datasets.imdb.load_data()")
         (x_train, y_train), (x_test, y_test) = imdb.load_data()
-        logger.info("Data loaded")
+        logger.info("Data loaded from keras.datasets.imdb.load_data()")
         
         return pd.DataFrame(x_train), pd.DataFrame(y_train), pd.DataFrame(x_test), pd.DataFrame(y_test)
 
@@ -131,113 +132,181 @@ class Data:
         data = tf.keras.preprocessing.sequence.pad_sequences(data, padding = "post", maxlen = 256)
 
         return data
-
-    def get_data(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        
-        return self.x_train, self.x_test, self.y_train, self.y_test
     
 ################
 ###  MODELS  ###
 ################
 
 class Model:
-    def __init__(self, state : dict = None, input_width: int = None) -> None:
-        self.name = "RNN"
-        self.state = state
-        self.input_width = input_width
-        self.uuid = self.state['uuid']
-        self.x_train, self.x_test, self.y_train, self.y_test = data
+    def __init__(self) -> None:
+        self.uuid = parser.data['uuid']
+        self.model = None
+        self.x_train = data.x_train
+        self.x_test = data.x_test
+        self.y_train = data.y_train
+        self.y_test = data.y_test
         self.predictions = None
-        self.model_score = None
-
-        if self.state['uuid'] is not None:
-            logger.info(f"Loading model from ./model/{self.uuid}")
-            self.model = self.load_model()
-        else:
-            logger.info("No model UUID provided. Generating new UUID")
-            self.state['uuid'] = str(uuid.uuid4())
-            self.uuid = self.state['uuid']
-            logger.info(f"New UUID: {self.uuid}")
-            logger.info(f"Initializing new model")
-            self.model = self.init_model()
-            
+        self.model_score = None  
+    
+class NN(Model):
+    def __init__(self) -> None:
+        super().__init__()
+        self.input_width = max(self.x_train[0])
+        self.optimizer = None
+        self.loss_function = None
+        
+    def optimize(self) -> None:
+        self.optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
+        # self.optimizer = tf.keras.optimizers.Adadelta(learning_rate = 0.1, ema_momentum = 0.95)
+        # self.optimizer = tf.keras.optimizers.Adam(lr=1e-3)
+        self.loss_function = tf.keras.losses.Huber()
+        # self.loss_function = tf.keras.losses.mean_squared_error
+        # self.loss_function = tf.keras.losses.binary_crossentropy
+        self.model.compile(optimizer = self.optimizer, loss = self.loss_function, metrics = [METRICS])
+        
     def fit(self) -> None:
-        self.model.fit(self.x_train, self.y_train, epochs = 10, batch_size = 32, verbose = 1, validation_data = (self.x_test, self.y_test))
+        self.model.fit(self.x_train, self.y_train, epochs = EPOCHS, batch_size = BATCH_SIZE, verbose = 1, validation_data = (self.x_test, self.y_test))
     
     def predict(self) -> None:
         self.predictions =  self.model.predict(self.x_test)
     
     def score(self) -> None:
         self.model_score = self.model.evaluate(self.x_test, self.y_test)
-
-    def init_model(self) -> tf.keras.Model:
-        logger.info("Initializing model")
-        model = Sequential([Embedding(input_dim = self.input_width, output_dim = 128),
-                            SimpleRNN(units = 128, return_sequences = True),
-                            SimpleRNN(units = 128),
-                            Dense(units = 1, activation = 'sigmoid')])
-      
-        optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
-        # self.optimizer = tf.keras.optimizers.Adadelta(learning_rate = 0.1, ema_momentum = 0.95)
-        # self.optimizer = tf.keras.optimizers.Adam(lr=1e-3)
-        loss_function = tf.keras.losses.Huber()
-        # self.loss_function = tf.keras.losses.mean_squared_error
-        # self.loss_function = tf.keras.losses.binary_crossentropy
-        model.compile(optimizer = optimizer, loss = loss_function, metrics = [METRICS])
-        logger.info("Model initialized")
         
-        return model
-           
+    def save(self) -> None:
+        logger.info(f"Saving model to './models/{self.uuid}/{self.name}-model.weights.h5'")
+        self.model.save_weights(f'./models/{self.uuid}/{self.name}-model.weights.h5')
+        logger.info(f"Saved model weights to './models/{self.uuid}/{self.name}-model.weights.h5'")
+        
+    def load(self) -> None:
+        self.model = tf.keras.Model()
+        logger.info(f"Loading model from './models/{self.uuid}/{self.name}-model.weights.h5'")
+        self.model.load_weights(f'./models/{self.uuid}/{self.name}-model.weights.h5')
+        logger.info(f"Loaded model weights from './models/{self.uuid}/{self.name}-model.weights.h5'")
+        
+    def print(self) -> None:
+        logger.info(f"{self.name}:  Loss - {self.model_score[0]}, Test Data Accuracy - {self.model_score[1]}")
+        
+class Ensemble(Model):
+    def __init__(self) -> None:
+        super().__init__()
+        self.params = None
+        self.best_params = None
+        self.best_model = None
+        
+    def scale(self) -> None:
+        self.train_x = scaler().fit_transform(self.train_x)
+        self.test_x = scaler().fit_transform(self.test_x)
+        
     def save_model(self) -> None:
-        logger.info(f"Saving model to './models/{self.uuid}/model.h5'")
-        logger.info(f"Creating directory './models/{self.uuid}'")
-        results_dir_path = f"./models/{self.uuid}"
-        if not os.path.exists(results_dir_path):
-            if not os.path.exists('./models'):
-                try:
-                    os.mkdir('./models')
-                except OSError:
-                    logger.warning(f"Creation of the directory {'./models'} failed")
-                    exit(1)
-            try:
-                os.mkdir(results_dir_path)
-            except OSError:
-                logger.warning(f"Creation of the directory {results_dir_path} failed")
-                exit(1)
-            else:
-                logger.info(f"Successfully created the directory {results_dir_path}")
-
-        self.model.save_weights(f'./models/{self.uuid}/model.weights.h5')
-        logger.info(f"Saved model weights to ./models/{self.uuid}/model.weights.h5")
-
-        logger.info(f"Saving Numpy random state to ./models/{self.uuid}/numpy_random_state.pkl")
-        with open(f"./models/{self.uuid}/numpy_random_state.pkl", 'wb') as f:
-            pickle.dump(np.random.get_state(), f)
-        logger.info(f"Saved Numpy random state to ./models/{self.uuid}/random_state.npy")
-
-        with open(f'./models/{self.uuid}/state.json', 'w') as f:
-            logger.info(f"Saving Network with UUID {self.uuid}")
-            json.dump(self.state, f)
-            logger.info(f"Saved state to './models/{self.uuid}/state.json'")
-
-    def load_model(self) -> tf.keras.Model:
-        model = tf.keras.Model()
-        logger.info(f"Loading model from './models/{self.uuid}/model.weights.h5'")
-        model.load_weights(f'./models/{self.uuid}/model.weights.h5')
-        logger.info(f"Loaded model weights from './models/{self.uuid}/model.weights.h5'")
+        logger.info(f"Saving model to './models/{self.uuid}/{self.model_name}-model.pkl'")
+        pickle.dump(self.model, f'./models/{self.uuid}/{self.model_name}-model.pkl')
+        logger.info(f"Saved model to './models/{self.uuid}/{self.model_name}-model.pkl'")
+        logger.info(f"Saving best model to './models/{self.uuid}/{self.model_name}-best-model.pkl'")
+        pickle.dump(self.best_model, f'./models/{self.uuid}/{self.model_name}-best-model.pkl')
+        logger.info(f"Saved best model to './models/{self.uuid}/{self.model_name}-best-model.pkl'")
+        logger.info(f"Saving best params to './models/{self.uuid}/{self.model_name}-best-params.json'")
+        with open(f'./models/{self.uuid}/{self.model_name}-best-params.json', 'w') as f:
+            json.dump(self.best_params, f)
+        logger.info(f"Saved best params to './models/{self.uuid}/{self.model_name}-best-params.json'")
         
-        with open(f"./models/{self.uuid}/numpy_random_state.pkl", 'rb') as f:
-            random_state = pickle.load(f)
-            np.random.set_state(random_state)
-        logger.info(f"Loaded Numpy random state from './models/{self.uuid}/numpy_random_state.pkl'")
-
-        if os.path.exists(f'./models/{self.uuid}/state.json'):
-            with open(f'./models/{self.uuid}/state.json', 'r') as f:
-                logger.info(f"Loading state from './models/{self.uuid}/state.json'")
-                self.state = json.load(f)
-                logger.info(f"Loaded state from './models/{self.uuid}/state.json'")     
-
-        return model
+    def load_model(self) -> None:
+        logger.info(f"Loading model from './models/{self.uuid}/{self.model_name}-model.pkl'")
+        self.model = pickle.load(f'./models/{self.uuid}/{self.model_name}-model.pkl')
+        logger.info(f"Loaded model from './models/{self.uuid}/{self.model_name}-model.pkl'")
+        logger.info(f"Loading best model from './models/{self.uuid}/{self.model_name}-best-model.pkl'")
+        self.best_model = pickle.load(f'./models/{self.uuid}/{self.model_name}-best-model.pkl')
+        logger.info(f"Loaded best model from './models/{self.uuid}/{self.model_name}-best-model.pkl'")
+        logger.info(f"Loading best params from './models/{self.uuid}/{self.model_name}-best-params.json'")
+        with open(f'./models/{self.uuid}/{self.model_name}-best-params.json', 'r') as f:
+            self.best_params = json.load(f)
+        logger.info(f"Loaded best params from './models/{self.uuid}/{self.model_name}-best-params.json'")
+    
+class RNN(NN):
+    def __init__(self) -> None:
+        super().__init__()
+        self.name = "RNN"
+            
+    def init_model(self) -> tf.keras.Model:
+        logger.info("Initializing {self.name} model")
+        self.model = Sequential([Embedding(input_dim = self.input_width, output_dim = INTERNAL_DIMENSION),
+                            SimpleRNN(units = INTERNAL_DIMENSION, return_sequences = True),
+                            SimpleRNN(units = INTERNAL_DIMENSION),
+                            Dense(units = 1, activation = 'sigmoid')])
+        logger.info("Model {self.name} initialized")
+    
+class LSTM(NN):
+    def __init__(self) -> None:
+        super().__init__()
+        
+    def init_model(self) -> tf.keras.Model:
+        logger.info("Initializing {self.name} model")
+        self.model = Sequential([Embedding(input_dim = self.input_width, output_dim = INTERNAL_DIMENSION),
+                            LSTM(units = INTERNAL_DIMENSION, return_sequences = True),
+                            LSTM(units = INTERNAL_DIMENSION),
+                            Dense(units = 1, activation = 'sigmoid')])
+        logger.info("Model {self.name} initialized")
+    
+class MNB(Ensemble):
+    def __init__(self) -> None:
+        super().__init__()
+        self.model_name = "Multinomial Naive Bayes"
+        self.params = { 'alpha': [ 1.0, 0.5, 0.1 ] }
+        self.model = mnb(alpha = self.params['alpha'][0])
+    
+class KNN(Ensemble):
+    def __init__(self, data) -> None:
+        super().__init__(data)
+        self.model_name = "K-Nearest Neighbors"
+        self.params = { 'n_neighbors': [ 5 ],
+                        'p': [ 2 ],
+                        'weights': [ 'uniform' ],
+                        'algorithm': [ 'kd_tree' ]
+                      }
+        self.model = knn(n_neighbors = self.params['n_neighbors'][0], 
+                         p = self.params['p'][0], 
+                         weights = self.params['weights'][0], 
+                         algorithm = self.params['algorithm'][0])
+        
+    def grid_search(self) -> None:
+        self.params = { 'n_neighbors': [ 10, 12, 15 ],
+                        'p': [ 1, 2, 3 ],
+                        'weights': [ 'uniform', 'distance' ],
+                        'algorithm': [ 'ball_tree', 'kd_tree', 'brute' ]
+                      }
+        self.best_params = self.search().best_params_
+        
+    def best_fit(self) -> None:
+        self.best_model = knn(n_neighbors=self.best_params['n_neighbors'], 
+                              p=self.best_params['p'], 
+                              weights=self.best_params['weights'], 
+                              algorithm=self.best_params['algorithm'])
+        self.best_model.fit(self.train_x, self.train_y)
+        
+class RFC(Ensemble):
+    def __init__(self, data) -> None:
+        super().__init__(data)
+        self.model_name = "Random Forest Classifier"
+        self.params = { 'n_estimators': [ 100 ],
+                        'max_depth': [ 10 ],
+                        'criterion': [ 'gini' ]
+                      }
+        self.model = rfcn(n_estimators = self.params['n_estimators'][0], 
+                          max_depth = self.params['max_depth'][0], 
+                          criterion = self.params['criterion'][0])
+        
+    def grid_search(self) -> None:
+        self.params = { 'n_estimators': [ 100, 200, 300 ],
+                        'max_depth': [ 10, 20, 30 ],
+                        'criterion': [ 'gini', 'entropy' ]
+                      }
+        self.best_params = self.search().best_params_
+        
+    def best_fit(self) -> None:
+        self.best_model = rfcn(n_estimators=self.best_params['n_estimators'], 
+                               max_depth=self.best_params['max_depth'], 
+                               criterion=self.best_params['criterion'])
+        self.best_model.fit(self.train_x, self.train_y)
 
 ###############
 ### LOGGING ###
@@ -288,34 +357,75 @@ class Arguments(argparse.ArgumentParser):
 ###############
       
 class Agent:
-    def __init__(self, state: dict, data : tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame], input_width: int) -> None:
-        self.algorithms = [#("RNN", SimpleRNN()),
-                           #("LSTM", LSTM()),
-                           #("Neural Network", nn()),
-                           ("Naive Bayes", MultinomialNB()),
-                           ("Decision Tree", dtc()),
-                           ("Logistic Regression", lr()),
-                           ("Random Forest", rfcn()),
-                           ("K-Nearest Neighbors", knn())]
-        self.uuid = state['uuid']
-        self.input_width = input_width
-        self.optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
-        # self.optimizer = tf.keras.optimizers.Adadelta(learning_rate = 0.1, ema_momentum = 0.95)
-        # self.optimizer = tf.keras.optimizers.Adam(lr=1e-3)
-        self.loss_function = tf.keras.losses.Huber()
-        # self.loss_function = tf.keras.losses.mean_squared_error
-        self.x_train, self.x_test, self.y_train, self.y_test = data
-        self.M = Model(state = parser.data, input_width = self.input_width)
-        self.model = self.M.model
+    def __init__(self) -> None:
+        self.algorithms = [RNN, LSTM, MNB, KNN, RFC]
+        self.uuid = parser.data['uuid']
+        np.random.seed(parser.data['seed'])
 
     def run(self) -> None:
-        self.M.fit()
-        self.M.predict()
-        self.M.save_model()
-        self.model.summary()
-        self.M.score()
-        logger.info(f"{self.M.name}:  Loss - {self.M.model_score[0]}, Test Data Accuracy - {self.M.model_score[1]}")
+        # testing
+        self.algorithms = [RNN]
+        for algorithm in self.algorithms:
+            model = algorithm()
+            model.init_model()
+            model.optimize()
+            model.fit()
+            model.predict()
+            model.score()
+            self.save()
+            model.save()
+            self.load()
+            model.load()
+            model.print()
+            
+    def save(self) -> None:
+        logger.info(f"Saving data to './models/{self.uuid}/'")
+        logger.info(f"Creating directory './models/{self.uuid}'")
+        results_dir_path = f"./models/{self.uuid}"
+        if not os.path.exists(results_dir_path):
+            if not os.path.exists('./models'):
+                try:
+                    os.mkdir('./models')
+                except OSError:
+                    logger.warning(f"Creation of the directory {'./models'} failed")
+                    exit(1)
+            try:
+                os.mkdir(results_dir_path)
+            except OSError:
+                logger.warning(f"Creation of the directory {results_dir_path} failed")
+                exit(1)
+            else:
+                logger.info(f"Successfully created the directory {results_dir_path}")
 
+        logger.info(f"Saving Numpy random state to ./models/{self.uuid}/numpy_random_state.pkl")
+        with open(f"./models/{self.uuid}/numpy_random_state.pkl", 'wb') as f:
+            pickle.dump(np.random.get_state(), f)
+        logger.info(f"Saved Numpy random state to ./models/{self.uuid}/random_state.npy")
+
+        logger.info(f"Saving state to './models/{self.uuid}/state.json'")
+        with open(f'./models/{self.uuid}/state.json', 'w') as f:
+            json.dump(parser.data, f)
+        logger.info(f"Saved state to './models/{self.uuid}/state.json'")
+
+    def load(self) -> None:
+        logger.info(f"Loading Numpy random state from './models/{self.uuid}/numpy_random_state.pkl'")
+        if not os.path.exists(f"./models/{self.uuid}/numpy_random_state.pkl"):
+            logger.warning(f"File './models/{self.uuid}/numpy_random_state.pkl' does not exist. Exiting...")
+            exit(1)
+        else:
+            with open(f"./models/{self.uuid}/numpy_random_state.pkl", 'rb') as f:
+                random_state = pickle.load(f)
+                np.random.set_state(random_state)
+            logger.info(f"Loaded Numpy random state from './models/{self.uuid}/numpy_random_state.pkl'")
+
+        if not os.path.exists(f'./models/{self.uuid}/state.json'):
+            logger.warning(f"File './models/{self.uuid}/state.json' does not exist. Exiting...")
+            exit(1)
+        else:
+            with open(f'./models/{self.uuid}/state.json', 'r') as f:
+                logger.info(f"Loading state from './models/{self.uuid}/state.json'")
+                parser.data = json.load(f)
+                logger.info(f"Loaded state from './models/{self.uuid}/state.json'")   
 ##########################
 ###  ARGUMENT PARSING  ###
 ##########################
@@ -331,6 +441,10 @@ class Parsing:
             if not os.path.exists(f'./models/{self.data["uuid"]}'):
                 logger.info(f"The Model at ./models/{self.data['uuid']} does not exist. Exiting...")
                 exit(1)
+                
+        else:
+            self.data['uuid'] = uuid.uuid4().hex
+            logger.info(f"Model UUID not provided. Generating new UUID: {self.data['uuid']}")
 
 ###############
 ###  MAIN   ###
@@ -340,10 +454,7 @@ if __name__ == '__main__':
     logger = Logging().get_logger()
     args = Arguments().parse_args()
     parser = Parsing(args)
-    data = Data().get_data()
-    logger.info(f"Model data width: {len(data[0][0])}")
-    input_width = len(data[0][0])
-    agent = Agent(parser.data, data, input_width)
+    data = Data()
+    agent = Agent()
     agent.run()
-    logger.info("Training complete")
     exit(0)
