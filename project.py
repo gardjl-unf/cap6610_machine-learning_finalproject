@@ -23,7 +23,7 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.datasets import imdb as imdb
 from tensorflow.keras.models import Sequential
 from sklearn.naive_bayes import MultinomialNB as mnb
-from sklearn.neighbors import KNeighborsClassifier as knn
+from sklearn.ensemble import HistGradientBoostingClassifier as hgbc
 from sklearn.ensemble import RandomForestClassifier as rfcn
 from sklearn.preprocessing import StandardScaler as scaler
 from tensorflow.keras import callbacks
@@ -351,6 +351,35 @@ class RFC(Ensemble):
                                  max_depth = self.best_params['max_depth'], 
                                  criterion = self.best_params['criterion'])
         self.scaled_model.fit(self.x_train, self.y_train)
+        
+class HGBC(Ensemble):
+    def __init__(self) -> None:
+        super().__init__()
+        self.name = "HistGradientBoostingClassifier"
+        self.params = { 'max_iter': [ 100, 200, 300 ],
+                        'max_depth': [ 10, 20, 30 ],
+                        'learning_rate': [ 0.1, 0.01, 0.001 ]
+                      }
+        
+    def init_model(self) -> None:
+        self.model = hgbc(max_iter = self.params['max_iter'][0], 
+                          max_depth = self.params['max_depth'][0], 
+                          learning_rate = self.params['learning_rate'][0])
+        
+    def grid_search(self) -> None:
+        self.best_params = self.search().best_params_
+        
+    def best_fit(self) -> None:
+        self.best_model = hgbc(max_iter = self.best_params['max_iter'], 
+                               max_depth = self.best_params['max_depth'], 
+                               learning_rate = self.best_params['learning_rate'])
+        self.best_model.fit(self.x_train, self.y_train)
+        
+    def scaled_fit(self) -> None:
+        self.scaled_model = hgbc(max_iter = self.best_params['max_iter'], 
+                                 max_depth = self.best_params['max_depth'], 
+                                 learning_rate = self.best_params['learning_rate'])
+        self.scaled_model.fit(self.x_train, self.y_train)
 
 ###############
 ### LOGGING ###
@@ -402,7 +431,7 @@ class Arguments(argparse.ArgumentParser):
       
 class Agent:
     def __init__(self) -> None:
-        self.algorithms = [RNN, LSTMCNN, RFC, MNB]
+        self.algorithms = [RNN, LSTMCNN, RFC, MNB, HGBC]
         self.uuid = parser.data['uuid']
         np.random.seed(parser.data['seed'])
 
