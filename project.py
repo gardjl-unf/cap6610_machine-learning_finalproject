@@ -26,6 +26,7 @@ from sklearn.naive_bayes import MultinomialNB as mnb
 from sklearn.neighbors import KNeighborsClassifier as knn
 from sklearn.ensemble import RandomForestClassifier as rfcn
 from sklearn.preprocessing import StandardScaler as scaler
+from tensorflow.keras import callbacks
 from sklearn.model_selection import GridSearchCV as gridsearch
 #https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
@@ -41,7 +42,7 @@ RMSPROP_CLIP = 10.0
 AVERAGE = "weighted"
 METRICS = "accuracy"
 BATCH_SIZE = 32
-EPOCHS = 10
+EPOCHS = 25
 INTERNAL_DIMENSION = 128
 PADDING_LENGTH = 256
 CV = 2
@@ -146,13 +147,26 @@ class NN(Model):
         self.loss_function = None
         self.vocab_size = len(imdb.get_word_index()) + 1
         
+    def fit(self) -> None:
+        earlystopping = callbacks.EarlyStopping(monitor = "val_loss",
+                                        mode = "min",
+                                        patience = 5,
+                                        restore_best_weights = True)
+        self.model.fit(self.x_train, 
+                       self.y_train, 
+                       batch_size = BATCH_SIZE, 
+                       epochs = EPOCHS, 
+                       validation_data = (self.x_test, self.y_test),
+                       callbacks = [earlystopping])
+        
     def optimize(self) -> None:
         self.optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
         # self.optimizer = tf.keras.optimizers.Adadelta(learning_rate = 0.1, ema_momentum = 0.95)
         # self.optimizer = tf.keras.optimizers.Adam(lr=1e-3)
         self.loss_function = tf.keras.losses.Huber()
-        # self.loss_function = tf.keras.losses.mean_squared_error
-        # self.loss_function = tf.keras.losses.binary_crossentropy
+        # self.loss_function = tf.keras.losses.mean_squared_error()
+        # self.loss_function = tf.keras.losses.binary_crossentropy()
+        # self.loss_function = tf.keras.losses.categorical_crossentropy()
         self.model.compile(optimizer = self.optimizer, loss = self.loss_function, metrics = [METRICS])
         
     def save(self) -> None:
@@ -494,7 +508,7 @@ if __name__ == '__main__':
     logger = Logging().get_logger()
     args = Arguments().parse_args()
     parser = Parsing(args)
-    data = Data(test = True)
+    data = Data()
     agent = Agent()
     agent.run()
     exit(0)
