@@ -18,15 +18,15 @@ import sys
 import json
 import uuid
 import pickle
-from tensorflow.keras.layers import LSTM, SimpleRNN, Embedding, Dense, Conv1D
+from tensorflow.keras.layers import LSTM, SimpleRNN, Embedding, Dense, Conv1D, MaxPooling1D
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.datasets import imdb as imdb
 from tensorflow.keras.models import Sequential
 from sklearn.naive_bayes import MultinomialNB as mnb
-from sklearn.linear_model import LogisticRegression as lr
 from sklearn.neighbors import KNeighborsClassifier as knn
 from sklearn.ensemble import RandomForestClassifier as rfcn
-from sklearn.tree import DecisionTreeClassifier as dtc
 from sklearn.preprocessing import StandardScaler as scaler
+from sklearn.model_selection import GridSearchCV as gridsearch
 #https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
 import re
@@ -43,55 +43,37 @@ METRICS = "accuracy"
 BATCH_SIZE = 32
 EPOCHS = 10
 INTERNAL_DIMENSION = 128
+PADDING_LENGTH = 256
+CV = 2
+SCORING = "f1_weighted"
+ERROR_SCORE = 0.0
+N_JOBS = -1
+AVERAGE = "weighted"
+RETURN_TRAIN_SCORE = True
+BUFFER_LENGTH = 32
+
 
 class Data:
     def __init__(self, test: bool = False) -> None:
         self.test = test
         self.x_train, self.y_train, self.x_test, self.y_test = self._load_data()
-        self.x_train = self.x_train[10:20]
-        self.y_train = self.y_train[10:20]
-        self.x_test = self.x_test[10:20]
-        self.y_test = self.y_test[10:20]
+        if self.test == True:
+            self.x_train = self.x_train[10:20]
+            self.y_train = self.y_train[10:20]
+            self.x_test = self.x_test[10:20]
+            self.y_test = self.y_test[10:20]
         
     def _load_data(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        '''
-        https://keras.io/api/datasets/imdb/
-        
-        keras.datasets.imdb.load_data(
-            path="imdb.npz",
-            num_words=None,
-            skip_top=0,
-            maxlen=None,
-            seed=113,
-            start_char=1,
-            oov_char=2,
-            index_from=3,
-            **kwargs
-        )
-        
-        Arguments
-
-            path: where to cache the data (relative to ~/.keras/dataset).
-            num_words: integer or None. Words are ranked by how often they occur (in the training set) and only the num_words most frequent words are kept. Any less frequent word will appear as oov_char value in the sequence data. If None, all words are kept. Defaults to None.
-            skip_top: skip the top N most frequently occurring words (which may not be informative). These words will appear as oov_char value in the dataset. When 0, no words are skipped. Defaults to 0.
-            maxlen: int or None. Maximum sequence length. Any longer sequence will be truncated. None, means no truncation. Defaults to None.
-            seed: int. Seed for reproducible data shuffling.
-            start_char: int. The start of a sequence will be marked with this character. 0 is usually the padding character. Defaults to 1.
-            oov_char: int. The out-of-vocabulary character. Words that were cut out because of the num_words or skip_top limits will be replaced with this character.
-            index_from: int. Index actual words with this index and higher.
-
-        Returns
-
-            Tuple of Numpy arrays: (x_train, y_train), (x_test, y_test).
-
-
-        '''
-        
         logger.info("Loading data from keras.datasets.imdb.load_data()")
         (x_train, y_train), (x_test, y_test) = imdb.load_data()
         logger.info("Data loaded from keras.datasets.imdb.load_data()")
         
-        return pd.DataFrame(x_train), pd.DataFrame(y_train), pd.DataFrame(x_test), pd.DataFrame(y_test)
+        logger.info("Padding sequences")
+        x_train = pad_sequences(x_train, maxlen = PADDING_LENGTH, padding = 'post', truncating = 'post')
+        x_test = pad_sequences(x_test, maxlen = PADDING_LENGTH, padding = 'post', truncating = 'post')
+        logger.info("Sequences padded")
+        
+        return np.array(x_train), np.array(y_train), np.array(x_test), np.array(y_test)
 
     def _process_data(self) -> None:
         '''
@@ -146,14 +128,23 @@ class Model:
         self.y_train = data.y_train
         self.y_test = data.y_test
         self.predictions = None
-        self.model_score = None  
+        self.model_score = None
+        
+    def fit(self) -> None:
+        self.model.fit(self.x_train, self.y_train)
+    
+    def predict(self) -> None:
+        self.predictions =  self.model.predict(self.x_test)
+    
+    def score(self) -> None:
+        self.model_score = self.model.evaluate(self.x_test, self.y_test)
     
 class NN(Model):
     def __init__(self) -> None:
         super().__init__()
-        self.input_width = max(self.x_train[0])
         self.optimizer = None
         self.loss_function = None
+        self.vocab_size = len(imdb.get_word_index()) + 1
         
     def optimize(self) -> None:
         self.optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
@@ -163,15 +154,6 @@ class NN(Model):
         # self.loss_function = tf.keras.losses.mean_squared_error
         # self.loss_function = tf.keras.losses.binary_crossentropy
         self.model.compile(optimizer = self.optimizer, loss = self.loss_function, metrics = [METRICS])
-        
-    def fit(self) -> None:
-        self.model.fit(self.x_train, self.y_train, epochs = EPOCHS, batch_size = BATCH_SIZE, verbose = 1, validation_data = (self.x_test, self.y_test))
-    
-    def predict(self) -> None:
-        self.predictions =  self.model.predict(self.x_test)
-    
-    def score(self) -> None:
-        self.model_score = self.model.evaluate(self.x_test, self.y_test)
         
     def save(self) -> None:
         logger.info(f"Saving model to './models/{self.uuid}/{self.name}-model.weights.h5'")
@@ -193,34 +175,88 @@ class Ensemble(Model):
         self.params = None
         self.best_params = None
         self.best_model = None
+        self.model_best_score = None
+        self.scaled_model = None
+        self.model_scaled_score = None
         
     def scale(self) -> None:
-        self.train_x = scaler().fit_transform(self.train_x)
-        self.test_x = scaler().fit_transform(self.test_x)
+        self.x_train = scaler().fit_transform(self.x_train)
+        self.x_test = scaler().fit_transform(self.x_test)
         
-    def save_model(self) -> None:
-        logger.info(f"Saving model to './models/{self.uuid}/{self.model_name}-model.pkl'")
-        pickle.dump(self.model, f'./models/{self.uuid}/{self.model_name}-model.pkl')
-        logger.info(f"Saved model to './models/{self.uuid}/{self.model_name}-model.pkl'")
-        logger.info(f"Saving best model to './models/{self.uuid}/{self.model_name}-best-model.pkl'")
-        pickle.dump(self.best_model, f'./models/{self.uuid}/{self.model_name}-best-model.pkl')
-        logger.info(f"Saved best model to './models/{self.uuid}/{self.model_name}-best-model.pkl'")
-        logger.info(f"Saving best params to './models/{self.uuid}/{self.model_name}-best-params.json'")
-        with open(f'./models/{self.uuid}/{self.model_name}-best-params.json', 'w') as f:
+    def score(self) -> None:
+        self.model_score = f1_score(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
+        
+    def search(self) -> dict:
+        return gridsearch(self.model, 
+                          self.params, 
+                          cv = CV, 
+                          scoring = SCORING, 
+                          error_score = ERROR_SCORE,
+                          n_jobs = N_JOBS,
+                          return_train_score = RETURN_TRAIN_SCORE).fit(self.x_train, self.y_train)
+        
+    def grid_search(self) -> None:
+        self.best_params = self.search().best_params_
+        
+    def best_predict(self) -> None:
+        self.best_predictions = self.best_model.predict(self.x_test)
+        
+    def best_score(self) -> None:
+        self.model_best_score = f1_score(self.y_test, self.best_predictions, average= AVERAGE, labels = np.unique(self.best_predictions))
+        
+    def scaled_predict(self) -> None:
+        self.scaled_predictions = self.scaled_model.predict(self.x_test)
+        
+    def scaled_score(self) -> None:
+        self.model_scaled_score = f1_score(self.y_test, self.scaled_predictions, average = AVERAGE, labels = np.unique(self.scaled_predictions))
+        
+    def print(self, best : bool = False, scaled : bool = False) -> None:
+        if best:
+            print(f"Best {self.name} F1 Score: {self.model_best_score}")
+            print(f"Best {self.name} Parameters: {self.best_params}")
+        elif scaled:
+            print(f"Scaled {self.name} F1 Score: {self.model_scaled_score}")
+            print(f"Scaled {self.name} Parameters: {self.best_params}")
+        else:
+            print(f"{self.name} F1 Score: {self.model_score}")
+            print(f"{self.name} Parameters: {self.params}")
+        
+    def save(self) -> None:
+        logger.info(f"Saving model to './models/{self.uuid}/{self.name}-model.pkl'")
+        with open(f'./models/{self.uuid}/{self.name}-model.pkl', 'wb') as f:
+            pickle.dump(self.model, f)
+        logger.info(f"Saved model to './models/{self.uuid}/{self.name}-model.pkl'")
+        logger.info(f"Saving best model to './models/{self.uuid}/{self.name}-best-model.pkl'")
+        with open(f'./models/{self.uuid}/{self.name}-best-model.pkl', 'wb') as f:
+            pickle.dump(self.best_model, f)
+        logger.info(f"Saved best model to './models/{self.uuid}/{self.name}-best-model.pkl'")
+        if isinstance(self, RFC):
+            logger.info(f"Saving scaled model to './models/{self.uuid}/{self.name}-scaled-model.pkl'")
+            with open(f'./models/{self.uuid}/{self.name}-scaled-model.pkl', 'wb') as f:
+                pickle.dump(self.scaled_model, f)
+            logger.info(f"Saved scaled model to './models/{self.uuid}/{self.name}-scaled-model.pkl'")
+        logger.info(f"Saving best params to './models/{self.uuid}/{self.name}-best-params.json'")
+        with open(f'./models/{self.uuid}/{self.name}-best-params.json', 'w') as f:
             json.dump(self.best_params, f)
-        logger.info(f"Saved best params to './models/{self.uuid}/{self.model_name}-best-params.json'")
+        logger.info(f"Saved best params to './models/{self.uuid}/{self.name}-best-params.json'")
         
-    def load_model(self) -> None:
-        logger.info(f"Loading model from './models/{self.uuid}/{self.model_name}-model.pkl'")
-        self.model = pickle.load(f'./models/{self.uuid}/{self.model_name}-model.pkl')
-        logger.info(f"Loaded model from './models/{self.uuid}/{self.model_name}-model.pkl'")
-        logger.info(f"Loading best model from './models/{self.uuid}/{self.model_name}-best-model.pkl'")
-        self.best_model = pickle.load(f'./models/{self.uuid}/{self.model_name}-best-model.pkl')
-        logger.info(f"Loaded best model from './models/{self.uuid}/{self.model_name}-best-model.pkl'")
-        logger.info(f"Loading best params from './models/{self.uuid}/{self.model_name}-best-params.json'")
-        with open(f'./models/{self.uuid}/{self.model_name}-best-params.json', 'r') as f:
+    def load(self) -> None:
+        logger.info(f"Loading model from './models/{self.uuid}/{self.name}-model.pkl'")
+        with open(f'./models/{self.uuid}/{self.name}-model.pkl', 'rb') as f:
+            self.model = pickle.load(f)
+        logger.info(f"Loaded model from './models/{self.uuid}/{self.name}-model.pkl'")
+        logger.info(f"Loading scaled model from './models/{self.uuid}/{self.name}-scaled-model.pkl'")
+        with open(f'./models/{self.uuid}/{self.name}-scaled-model.pkl', 'rb') as f:
+            self.scaled_model = pickle.load(f)
+        logger.info(f"Loaded scaled model from './models/{self.uuid}/{self.name}-scaled-model.pkl'")
+        logger.info(f"Loading best model from './models/{self.uuid}/{self.name}-best-model.pkl'")
+        with open(f'./models/{self.uuid}/{self.name}-best-model.pkl', 'rb') as f:
+            self.best_model = pickle.load(f)
+        logger.info(f"Loaded best model from './models/{self.uuid}/{self.name}-best-model.pkl'")
+        logger.info(f"Loading best params from './models/{self.uuid}/{self.name}-best-params.json'")
+        with open(f'./models/{self.uuid}/{self.name}-best-params.json', 'r') as f:
             self.best_params = json.load(f)
-        logger.info(f"Loaded best params from './models/{self.uuid}/{self.model_name}-best-params.json'")
+        logger.info(f"Loaded best params from './models/{self.uuid}/{self.name}-best-params.json'")
     
 class RNN(NN):
     def __init__(self) -> None:
@@ -228,85 +264,79 @@ class RNN(NN):
         self.name = "RNN"
             
     def init_model(self) -> tf.keras.Model:
-        logger.info("Initializing {self.name} model")
-        self.model = Sequential([Embedding(input_dim = self.input_width, output_dim = INTERNAL_DIMENSION),
-                            SimpleRNN(units = INTERNAL_DIMENSION, return_sequences = True),
-                            SimpleRNN(units = INTERNAL_DIMENSION),
-                            Dense(units = 1, activation = 'sigmoid')])
-        logger.info("Model {self.name} initialized")
+        logger.info(f"Initializing {self.name} model")
+        self.model = Sequential([
+            Embedding(input_dim=self.vocab_size, output_dim=128),
+            SimpleRNN(units=64, return_sequences=True, dropout=0.1, recurrent_dropout=0.1),
+            SimpleRNN(units=32, dropout=0.1),
+            Dense(units=1, activation='sigmoid')
+        ])
+        logger.info(f"Model {self.name} initialized")
     
-class LSTM(NN):
+class LSTMCNN(NN):
     def __init__(self) -> None:
         super().__init__()
+        self.name = "LSTM"
         
     def init_model(self) -> tf.keras.Model:
-        logger.info("Initializing {self.name} model")
-        self.model = Sequential([Embedding(input_dim = self.input_width, output_dim = INTERNAL_DIMENSION),
-                            LSTM(units = INTERNAL_DIMENSION, return_sequences = True),
-                            LSTM(units = INTERNAL_DIMENSION),
-                            Dense(units = 1, activation = 'sigmoid')])
-        logger.info("Model {self.name} initialized")
+        logger.info(f"Initializing {self.name} model")
+        self.model = Sequential([Embedding(input_dim=self.vocab_size, output_dim=128),
+                                Conv1D(filters=32, kernel_size=4, padding='same', activation='relu'),
+                                MaxPooling1D(pool_size=2),
+                                Conv1D(filters=64, kernel_size=5, padding='same', activation='relu'),
+                                MaxPooling1D(pool_size=4),
+                                Conv1D(filters=128, kernel_size=6, padding='same', activation='relu'),
+                                MaxPooling1D(pool_size=8),
+                                LSTM(64, dropout = 0.2),
+                                Dense(32),
+                                Dense(1, activation='sigmoid')])
+        logger.info(f"Model {self.name} initialized")
     
 class MNB(Ensemble):
     def __init__(self) -> None:
         super().__init__()
-        self.model_name = "Multinomial Naive Bayes"
+        self.name = "Multinomial Naive Bayes"
         self.params = { 'alpha': [ 1.0, 0.5, 0.1 ] }
-        self.model = mnb(alpha = self.params['alpha'][0])
-    
-class KNN(Ensemble):
-    def __init__(self, data) -> None:
-        super().__init__(data)
-        self.model_name = "K-Nearest Neighbors"
-        self.params = { 'n_neighbors': [ 5 ],
-                        'p': [ 2 ],
-                        'weights': [ 'uniform' ],
-                        'algorithm': [ 'kd_tree' ]
-                      }
-        self.model = knn(n_neighbors = self.params['n_neighbors'][0], 
-                         p = self.params['p'][0], 
-                         weights = self.params['weights'][0], 
-                         algorithm = self.params['algorithm'][0])
         
-    def grid_search(self) -> None:
-        self.params = { 'n_neighbors': [ 10, 12, 15 ],
-                        'p': [ 1, 2, 3 ],
-                        'weights': [ 'uniform', 'distance' ],
-                        'algorithm': [ 'ball_tree', 'kd_tree', 'brute' ]
-                      }
-        self.best_params = self.search().best_params_
+    def init_model(self) -> None:
+        self.model = mnb(alpha = self.params['alpha'][0])
         
     def best_fit(self) -> None:
-        self.best_model = knn(n_neighbors=self.best_params['n_neighbors'], 
-                              p=self.best_params['p'], 
-                              weights=self.best_params['weights'], 
-                              algorithm=self.best_params['algorithm'])
-        self.best_model.fit(self.train_x, self.train_y)
+        self.best_model = mnb(alpha = self.best_params['alpha'])
+        self.best_model.fit(self.x_train, self.y_train)
+        
+    def scaled_fit(self) -> None:
+        self.scaled_model = mnb(alpha = self.best_params['alpha'])
+        self.scaled_model.fit(self.x_train, self.y_train)
         
 class RFC(Ensemble):
-    def __init__(self, data) -> None:
-        super().__init__(data)
-        self.model_name = "Random Forest Classifier"
-        self.params = { 'n_estimators': [ 100 ],
-                        'max_depth': [ 10 ],
-                        'criterion': [ 'gini' ]
+    def __init__(self) -> None:
+        super().__init__()
+        self.name = "Random Forest Classifier"
+        self.params = { 'n_estimators': [ 100, 200, 300 ],
+                        'max_depth': [ 10, 20, 30 ],
+                        'criterion': [ 'gini', 'entropy' ]
                       }
+        
+    def init_model(self) -> None:
         self.model = rfcn(n_estimators = self.params['n_estimators'][0], 
                           max_depth = self.params['max_depth'][0], 
                           criterion = self.params['criterion'][0])
         
     def grid_search(self) -> None:
-        self.params = { 'n_estimators': [ 100, 200, 300 ],
-                        'max_depth': [ 10, 20, 30 ],
-                        'criterion': [ 'gini', 'entropy' ]
-                      }
         self.best_params = self.search().best_params_
         
     def best_fit(self) -> None:
-        self.best_model = rfcn(n_estimators=self.best_params['n_estimators'], 
-                               max_depth=self.best_params['max_depth'], 
-                               criterion=self.best_params['criterion'])
-        self.best_model.fit(self.train_x, self.train_y)
+        self.best_model = rfcn(n_estimators = self.best_params['n_estimators'], 
+                               max_depth = self.best_params['max_depth'], 
+                               criterion = self.best_params['criterion'])
+        self.best_model.fit(self.x_train, self.y_train)
+        
+    def scaled_fit(self) -> None:
+        self.scaled_model = rfcn(n_estimators = self.best_params['n_estimators'], 
+                                 max_depth = self.best_params['max_depth'], 
+                                 criterion = self.best_params['criterion'])
+        self.scaled_model.fit(self.x_train, self.y_train)
 
 ###############
 ### LOGGING ###
@@ -358,25 +388,34 @@ class Arguments(argparse.ArgumentParser):
       
 class Agent:
     def __init__(self) -> None:
-        self.algorithms = [RNN, LSTM, MNB, KNN, RFC]
+        self.algorithms = [RNN, LSTMCNN, RFC, MNB]
         self.uuid = parser.data['uuid']
         np.random.seed(parser.data['seed'])
 
     def run(self) -> None:
-        # testing
-        self.algorithms = [RNN]
+        self.save()
         for algorithm in self.algorithms:
             model = algorithm()
             model.init_model()
-            model.optimize()
+            if isinstance(model, NN):
+                model.optimize()
             model.fit()
             model.predict()
             model.score()
-            self.save()
-            model.save()
-            self.load()
-            model.load()
             model.print()
+            if isinstance(model, Ensemble):
+                model.grid_search()
+                model.best_fit()
+                model.best_predict()
+                model.best_score()
+                model.print(best = True)
+                if isinstance(model, RFC):
+                    model.scale()
+                    model.scaled_fit()
+                    model.scaled_predict()
+                    model.scaled_score()
+                    model.print(scaled = True)
+            model.save()
             
     def save(self) -> None:
         logger.info(f"Saving data to './models/{self.uuid}/'")
@@ -425,7 +464,8 @@ class Agent:
             with open(f'./models/{self.uuid}/state.json', 'r') as f:
                 logger.info(f"Loading state from './models/{self.uuid}/state.json'")
                 parser.data = json.load(f)
-                logger.info(f"Loaded state from './models/{self.uuid}/state.json'")   
+                logger.info(f"Loaded state from './models/{self.uuid}/state.json'")
+                
 ##########################
 ###  ARGUMENT PARSING  ###
 ##########################
@@ -454,7 +494,7 @@ if __name__ == '__main__':
     logger = Logging().get_logger()
     args = Arguments().parse_args()
     parser = Parsing(args)
-    data = Data()
+    data = Data(test = True)
     agent = Agent()
     agent.run()
     exit(0)
