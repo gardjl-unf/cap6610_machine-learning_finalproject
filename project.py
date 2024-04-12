@@ -190,12 +190,6 @@ class Ensemble(Model):
         self.best_params = None
         self.best_model = None
         self.model_best_score = None
-        self.scaled_model = None
-        self.model_scaled_score = None
-        
-    def scale(self) -> None:
-        self.x_train = scaler().fit_transform(self.x_train)
-        self.x_test = scaler().fit_transform(self.x_test)
         
     def score(self) -> None:
         self.model_score = f1_score(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
@@ -218,19 +212,10 @@ class Ensemble(Model):
     def best_score(self) -> None:
         self.model_best_score = f1_score(self.y_test, self.best_predictions, average= AVERAGE, labels = np.unique(self.best_predictions))
         
-    def scaled_predict(self) -> None:
-        self.scaled_predictions = self.scaled_model.predict(self.x_test)
-        
-    def scaled_score(self) -> None:
-        self.model_scaled_score = f1_score(self.y_test, self.scaled_predictions, average = AVERAGE, labels = np.unique(self.scaled_predictions))
-        
-    def print(self, best : bool = False, scaled : bool = False) -> None:
+    def print(self, best : bool = False) -> None:
         if best:
             print(f"Best {self.name} F1 Score: {self.model_best_score}")
             print(f"Best {self.name} Parameters: {self.best_params}")
-        elif scaled:
-            print(f"Scaled {self.name} F1 Score: {self.model_scaled_score}")
-            print(f"Scaled {self.name} Parameters: {self.best_params}")
         else:
             print(f"{self.name} F1 Score: {self.model_score}")
             print(f"{self.name} Parameters: {self.params}")
@@ -244,11 +229,6 @@ class Ensemble(Model):
         with open(f'./models/{self.uuid}/{self.name}-best-model.pkl', 'wb') as f:
             pickle.dump(self.best_model, f)
         logger.info(f"Saved best model to './models/{self.uuid}/{self.name}-best-model.pkl'")
-        if isinstance(self, RFC):
-            logger.info(f"Saving scaled model to './models/{self.uuid}/{self.name}-scaled-model.pkl'")
-            with open(f'./models/{self.uuid}/{self.name}-scaled-model.pkl', 'wb') as f:
-                pickle.dump(self.scaled_model, f)
-            logger.info(f"Saved scaled model to './models/{self.uuid}/{self.name}-scaled-model.pkl'")
         logger.info(f"Saving best params to './models/{self.uuid}/{self.name}-best-params.json'")
         with open(f'./models/{self.uuid}/{self.name}-best-params.json', 'w') as f:
             json.dump(self.best_params, f)
@@ -259,10 +239,6 @@ class Ensemble(Model):
         with open(f'./models/{self.uuid}/{self.name}-model.pkl', 'rb') as f:
             self.model = pickle.load(f)
         logger.info(f"Loaded model from './models/{self.uuid}/{self.name}-model.pkl'")
-        logger.info(f"Loading scaled model from './models/{self.uuid}/{self.name}-scaled-model.pkl'")
-        with open(f'./models/{self.uuid}/{self.name}-scaled-model.pkl', 'rb') as f:
-            self.scaled_model = pickle.load(f)
-        logger.info(f"Loaded scaled model from './models/{self.uuid}/{self.name}-scaled-model.pkl'")
         logger.info(f"Loading best model from './models/{self.uuid}/{self.name}-best-model.pkl'")
         with open(f'./models/{self.uuid}/{self.name}-best-model.pkl', 'rb') as f:
             self.best_model = pickle.load(f)
@@ -319,10 +295,6 @@ class MNB(Ensemble):
         self.best_model = mnb(alpha = self.best_params['alpha'])
         self.best_model.fit(self.x_train, self.y_train)
         
-    def scaled_fit(self) -> None:
-        self.scaled_model = mnb(alpha = self.best_params['alpha'])
-        self.scaled_model.fit(self.x_train, self.y_train)
-        
 class RFC(Ensemble):
     def __init__(self) -> None:
         super().__init__()
@@ -346,12 +318,6 @@ class RFC(Ensemble):
                                criterion = self.best_params['criterion'])
         self.best_model.fit(self.x_train, self.y_train)
         
-    def scaled_fit(self) -> None:
-        self.scaled_model = rfcn(n_estimators = self.best_params['n_estimators'], 
-                                 max_depth = self.best_params['max_depth'], 
-                                 criterion = self.best_params['criterion'])
-        self.scaled_model.fit(self.x_train, self.y_train)
-        
 class HGBC(Ensemble):
     def __init__(self) -> None:
         super().__init__()
@@ -374,12 +340,6 @@ class HGBC(Ensemble):
                                max_depth = self.best_params['max_depth'], 
                                learning_rate = self.best_params['learning_rate'])
         self.best_model.fit(self.x_train, self.y_train)
-        
-    def scaled_fit(self) -> None:
-        self.scaled_model = hgbc(max_iter = self.best_params['max_iter'], 
-                                 max_depth = self.best_params['max_depth'], 
-                                 learning_rate = self.best_params['learning_rate'])
-        self.scaled_model.fit(self.x_train, self.y_train)
 
 ###############
 ### LOGGING ###
@@ -419,11 +379,23 @@ class Arguments(argparse.ArgumentParser):
                             type = str, 
                             default = None)
         
-        self.add_argument("-d",
+        self.add_argument("-s",
                             "--seed",
                             help = "the seed to use",
                             type = int,
                             default = 42)
+        
+        self.add_argument("-n",
+                          "--neuralnetworks",
+                          help = "remove neural networks",
+                          action = "store_false",
+                          default = True)
+        
+        self.add_argument("-e",
+                          "--ensemble",
+                          help = "remove ensemble models",
+                          action = "store_false",
+                          default = True)
       
 ###############
 ###  AGENT  ###
@@ -431,7 +403,7 @@ class Arguments(argparse.ArgumentParser):
       
 class Agent:
     def __init__(self) -> None:
-        self.algorithms = [RNN, LSTMCNN, RFC, MNB, HGBC]
+        self.algorithms = self._process_flags()
         self.uuid = parser.data['uuid']
         np.random.seed(parser.data['seed'])
 
@@ -452,13 +424,19 @@ class Agent:
                 model.best_predict()
                 model.best_score()
                 model.print(best = True)
-                if isinstance(model, RFC):
-                    model.scale()
-                    model.scaled_fit()
-                    model.scaled_predict()
-                    model.scaled_score()
-                    model.print(scaled = True)
             model.save()
+            
+    def _process_flags(self) -> None:
+        algorithms = [RNN, LSTMCNN, RFC, MNB, HGBC]
+        if not parser.data['neuralnetworks']:
+            algorithms.remove(RNN)
+            algorithms.remove(LSTMCNN)
+        if not parser.data['ensemble']:
+            algorithms.remove(RFC)
+            algorithms.remove(MNB)
+            algorithms.remove(HGBC)
+            
+        return algorithms
             
     def save(self) -> None:
         logger.info(f"Saving data to './models/{self.uuid}/'")
