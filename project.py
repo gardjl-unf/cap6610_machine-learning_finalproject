@@ -111,8 +111,20 @@ class Data:
         logger.info("Sequences padded")
         
         logger.info("Data processed")
+        
+    def tokenize(self, data: str) -> np.Array:
+        word_index = imdb.get_word_index()
+        data = [data.split()]
+        inverted_word_index = dict(
+            (i, word) for (word, i) in word_index.items()
+        )
+        for i in range(len(data)):
+            for j in range(len(data[i])):
+                data[i][j] = inverted_word_index.get(data[i][j] - 3)
+        
+        return data
     
-    def _pad_sequences(self, data: pd.DataFrame) -> pd.DataFrame:
+    def _pad_sequences(self, data: np.Array) -> np.Array:
         data = padder(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
 
         return data
@@ -406,6 +418,12 @@ class Arguments(argparse.ArgumentParser):
                           help = "remove ensemble models",
                           action = "store_false",
                           default = True)
+        
+        self.add_argument("-p",
+                          "--process",
+                          help = "string to process",
+                          type = str,
+                          default = None)
       
 ###############
 ###  AGENT  ###
@@ -416,6 +434,19 @@ class Agent:
         self.algorithms = self._process_flags()
         self.uuid = parser.data['uuid']
         np.random.seed(parser.data['seed'])
+        
+    def init_agent(self) -> None:
+        if parser.data['uuid'] is None:
+            logger.info(f"No UUID provided. Generating new UUID:")
+            self.uuid = uuid.uuid4().hex
+            logger.info(f"New UUID: {self.uuid}")
+        else:
+            logger.info(f"Loading data for UUID: {self.uuid}")
+            data.load()
+            for algorithm in self.algorithms:
+                logger.info(f"Loading {algorithm} model")
+                algorithm.load()
+        logger.info(f"Agent initialized with UUID: {self.uuid}")
 
     def run(self) -> None:
         self.save()
@@ -505,6 +536,7 @@ class Parsing:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args : dict = args
         self.data : dict = {}
+        self.process = None
         for key, value in vars(args).items():
                 self.data[key] = value
 
@@ -512,12 +544,34 @@ class Parsing:
             if not os.path.exists(f'./models/{self.data["uuid"]}'):
                 logger.info(f"The Model at ./models/{self.data['uuid']} does not exist. Exiting...")
                 exit(1)
+            
+        if args.process is not None:
+            self.process = self.data['process']
+            logger.info(f"Processing input string: {self.process}")
+            self.process = _tokenize(self.process)
+            self.process = _pad_sequences(self.process)
+            logger.info(f"Input string processed {self.process}")
+            
+#########################
+### DATA MANIPULATION ###
+#########################
+
+        def _tokenize(self, data: str) -> np.Array:
+                word_index = imdb.get_word_index()
+                data = [data.split()]
+                inverted_word_index = dict(
+                    (i, word) for (word, i) in word_index.items()
+                )
+                for i in range(len(data)):
+                    for j in range(len(data[i])):
+                        data[i][j] = inverted_word_index.get(data[i][j] - 3)
                 
-                
-        # Temporary UUID generation until I add in the code to load if it is provided, or generate if it is not.
-        else:
-            self.data['uuid'] = uuid.uuid4().hex
-            logger.info(f"Model UUID not provided. Generating new UUID: {self.data['uuid']}")
+                return data
+            
+        def _pad_sequences(self, data: np.Array) -> np.Array:
+            data = padder(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
+
+            return data
 
 ###############
 ###  MAIN   ###
