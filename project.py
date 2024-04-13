@@ -19,7 +19,7 @@ import uuid
 import pickle
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, SimpleRNN, Embedding, Dense, Conv1D, MaxPooling1D
+from tensorflow.keras.layers import LSTM, Embedding, Dense, Conv1D, MaxPooling1D
 from tensorflow.keras.datasets import imdb as imdb
 from tensorflow.keras.preprocessing.sequence import pad_sequences as padder
 from tensorflow.keras import callbacks
@@ -113,7 +113,7 @@ class Data:
         logger.info("Data processed")
     
     def _pad_sequences(self, data: pd.DataFrame) -> pd.DataFrame:
-        data = tf.keras.preprocessing.sequence.pad_sequences(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
+        data = padder(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
 
         return data
     
@@ -254,7 +254,7 @@ class RNN(NN):
         super().__init__()
         self.name = "RNN"
             
-    def init_model(self) -> tf.keras.Model:
+    def init_model(self) -> None:
         logger.info(f"Initializing {self.name} model")
         self.model = Sequential([Embedding(input_dim = self.vocab_size, output_dim = 128),
                                 Conv1D(filters = 32, kernel_size = 4, padding = 'same', activation = 'relu'),
@@ -272,7 +272,7 @@ class LSTMCNN(NN):
         super().__init__()
         self.name = "LSTM"
         
-    def init_model(self) -> tf.keras.Model:
+    def init_model(self) -> None:
         logger.info(f"Initializing {self.name} model")
         self.model = Sequential([Embedding(input_dim = self.vocab_size, output_dim = 128),
                                 Conv1D(filters = 32, kernel_size = 4, padding = 'same', activation = 'relu'),
