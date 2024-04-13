@@ -36,7 +36,7 @@ if not sys.warnoptions:
     warnings.simplefilter("ignore")
     os.environ["PYTHONWARNINGS"] = "ignore"
 
-LOG_FORMAT_STRING = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
+LOG_FORMAT_testinput = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
 RMSPROP_CLIP = 10.0
 AVERAGE = "weighted"
 METRICS = "accuracy"
@@ -67,10 +67,10 @@ class Data:
         (x_train, y_train), (x_test, y_test) = imdb.load_data()
         logger.info("Data loaded from keras.datasets.imdb.load_data()")
         
-        logger.info("Padding sequences")
+        logger.info(f"Padding data set sequences to: {PADDING_LENGTH}")
         x_train = padder(x_train, maxlen = PADDING_LENGTH, padding = 'post', truncating = 'post')
         x_test = padder(x_test, maxlen = PADDING_LENGTH, padding = 'post', truncating = 'post')
-        logger.info("Sequences padded")
+        logger.info(f"Data set sequences padded to: {PADDING_LENGTH}")
         
         return x_train, y_train, x_test, y_test
 
@@ -112,7 +112,7 @@ class Data:
         
         logger.info("Data processed")
         
-    def tokenize(self, data: str) -> np.Array:
+    def tokenize(self, data: str) -> np.array:
         word_index = imdb.get_word_index()
         data = [data.split()]
         inverted_word_index = dict(
@@ -124,7 +124,7 @@ class Data:
         
         return data
     
-    def _pad_sequences(self, data: np.Array) -> np.Array:
+    def _pad_sequences(self, data: np.array) -> np.array:
         data = padder(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
 
         return data
@@ -147,8 +147,10 @@ class Model:
     def fit(self) -> None:
         self.model.fit(self.x_train, self.y_train)
     
-    def predict(self) -> None:
-        self.predictions =  self.model.predict(self.x_test)
+    def predict(self, input = None) -> None:
+        if input is None:
+            input = self.x_test
+        self.predictions =  self.model.predict(input)
     
     def score(self) -> None:
         self.model_score = self.model.evaluate(self.x_test, self.y_test)
@@ -188,10 +190,11 @@ class NN(Model):
         logger.info(f"Saved model weights to './models/{self.uuid}/{self.name}-model.weights.h5'")
         
     def load(self) -> None:
-        self.model = tf.keras.Model()
+        #self.init_model()
         logger.info(f"Loading model from './models/{self.uuid}/{self.name}-model.weights.h5'")
         self.model.load_weights(f'./models/{self.uuid}/{self.name}-model.weights.h5')
         logger.info(f"Loaded model weights from './models/{self.uuid}/{self.name}-model.weights.h5'")
+        self.model.summary()
         
     def print(self) -> None:
         logger.info(f"{self.name}:  Loss - {self.model_score[0]}, Test Data Accuracy - {self.model_score[1]}")
@@ -248,6 +251,7 @@ class Ensemble(Model):
         logger.info(f"Saved best params to './models/{self.uuid}/{self.name}-best-params.json'")
         
     def load(self) -> None:
+        self.init_model()
         logger.info(f"Loading model from './models/{self.uuid}/{self.name}-model.pkl'")
         with open(f'./models/{self.uuid}/{self.name}-model.pkl', 'rb') as f:
             self.model = pickle.load(f)
@@ -368,10 +372,13 @@ class Logging:
         self.logger.addHandler(self.get_console_handler())
         self.logger.propagate = False
         self.logger.info(f"Logging initialized -- {logger_name}")
+        # Redirect stdout and stderr to logger
+        #sys.stdout = self.logger.debug
+        #sys.stderr = self.logger.error
 
     def get_console_handler(self) -> logging.StreamHandler:
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setFormatter(LOG_FORMAT_STRING)
+        console_handler.setFormatter(LOG_FORMAT_testinput)
 
         return console_handler
 
@@ -419,9 +426,9 @@ class Arguments(argparse.ArgumentParser):
                           action = "store_false",
                           default = True)
         
-        self.add_argument("-p",
-                          "--process",
-                          help = "string to process",
+        self.add_argument("-i",
+                          "--testinput",
+                          help = "Test string to categorize",
                           type = str,
                           default = None)
       
@@ -434,21 +441,33 @@ class Agent:
         self.algorithms = self._process_flags()
         self.uuid = parser.data['uuid']
         np.random.seed(parser.data['seed'])
+        self.testinput = parser.data['testinput']
+        self.models: list[Model] = []
         
     def init_agent(self) -> None:
         if parser.data['uuid'] is None:
             logger.info(f"No UUID provided. Generating new UUID:")
             self.uuid = uuid.uuid4().hex
+            parser.data['uuid'] = self.uuid
             logger.info(f"New UUID: {self.uuid}")
         else:
             logger.info(f"Loading data for UUID: {self.uuid}")
-            data.load()
+            self.load()
             for algorithm in self.algorithms:
                 logger.info(f"Loading {algorithm} model")
-                algorithm.load()
+                model = algorithm()
+                #model.init_model()
+                model.load()
+                self.models.append(model)
         logger.info(f"Agent initialized with UUID: {self.uuid}")
 
     def run(self) -> None:
+        if self.models != []:
+            self._run_models()
+        else:
+            self._create_models()
+                
+    def _create_models(self) -> None:
         self.save()
         for algorithm in self.algorithms:
             model = algorithm()
@@ -467,6 +486,30 @@ class Agent:
                 model.print(best = True)
             model.save()
             
+    def _run_models(self) -> None:
+        if self.testinput is None:
+            logger.warning("No test input provided. Exiting...")
+            exit(1)
+        logger.info(f"Running models on input text")
+
+        predictions = []
+        for model in self.models:
+            model_prediction = model.predict(np.array([self.testinput]))  # Ensure the input is correctly formatted as a batch
+            predictions.append(model_prediction[0])
+            logger.info(f'Prediction from {model.name}: {"Positive" if model_prediction[0] > 0.5 else "Negative"}')
+
+        binary_outcomes = [1 if pred > 0.5 else 0 for pred in predictions]
+
+        from statistics import mode
+        try:
+            final_prediction = mode(binary_outcomes)
+        except:
+            final_prediction = 1 if sum(binary_outcomes) >= len(binary_outcomes) / 2 else 0
+
+        logger.info(f'Final prediction after majority voting: {"Positive" if final_prediction == 1 else "Negative"}')
+
+        return final_prediction
+    
     def _process_flags(self) -> None:
         algorithms = [RNN, LSTMCNN, RFC, MNB, HGBC]
         if not parser.data['neuralnetworks']:
@@ -536,42 +579,45 @@ class Parsing:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args : dict = args
         self.data : dict = {}
-        self.process = None
+        self.testinput = None
         for key, value in vars(args).items():
                 self.data[key] = value
 
         if args.uuid is not None:
             if not os.path.exists(f'./models/{self.data["uuid"]}'):
-                logger.info(f"The Model at ./models/{self.data['uuid']} does not exist. Exiting...")
+                logger.warning(f"The Model at ./models/{self.data['uuid']} does not exist. Exiting...")
                 exit(1)
             
-        if args.process is not None:
-            self.process = self.data['process']
-            logger.info(f"Processing input string: {self.process}")
-            self.process = _tokenize(self.process)
-            self.process = _pad_sequences(self.process)
-            logger.info(f"Input string processed {self.process}")
+        if args.testinput is not None:
+            if args.uuid is None:
+                logger.warning(f"Cannot process testinput without a UUID. Exiting...")
+                exit(1)
+            else:
+                self.testinput = self.data['testinput']
+                logger.info(f"Processing input testinput: {self.testinput}")
+                self.testinput = self._tokenize(self.testinput)
+                self.testinput = self._pad_sequences(self.testinput)
+                self.data['testinput'] = self.testinput
+                logger.info(f"Input processed")
             
-#########################
-### DATA MANIPULATION ###
-#########################
+################################
+### INPUT DATA MANIPULATION ###
+###############################
 
-        def _tokenize(self, data: str) -> np.Array:
-                word_index = imdb.get_word_index()
-                data = [data.split()]
-                inverted_word_index = dict(
-                    (i, word) for (word, i) in word_index.items()
-                )
-                for i in range(len(data)):
-                    for j in range(len(data[i])):
-                        data[i][j] = inverted_word_index.get(data[i][j] - 3)
-                
-                return data
-            
-        def _pad_sequences(self, data: np.Array) -> np.Array:
-            data = padder(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
+    def _tokenize(self, data: str) -> np.array:
+        word_index = imdb.get_word_index()
 
-            return data
+        words = data.lower().split()
+
+        indices = [word_index.get(word, 2) + 3 for word in words]
+
+        return np.array(indices)
+        
+    def _pad_sequences(self, data) -> np.array:
+        data = [data]
+        data = padder(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
+
+        return data
 
 ###############
 ###  MAIN   ###
@@ -579,9 +625,11 @@ class Parsing:
 
 if __name__ == '__main__':
     logger = Logging().get_logger()
+    logger.info(f"TensorFlow version: {tf.__version__}")
     args = Arguments().parse_args()
     parser = Parsing(args)
     data = Data()
     agent = Agent()
+    agent.init_agent()
     agent.run()
     exit(0)
