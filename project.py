@@ -10,7 +10,6 @@ __status__ = "Development"
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 import argparse
 import logging
 import os
@@ -18,15 +17,16 @@ import sys
 import json
 import uuid
 import pickle
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, SimpleRNN, Embedding, Dense, Conv1D, MaxPooling1D
 from tensorflow.keras.datasets import imdb as imdb
 from tensorflow.keras.preprocessing.sequence import pad_sequences as padder
+from tensorflow.keras import callbacks
 from sklearn.naive_bayes import MultinomialNB as mnb
 from sklearn.ensemble import HistGradientBoostingClassifier as hgbc
 from sklearn.ensemble import RandomForestClassifier as rfcn
 from sklearn.model_selection import GridSearchCV as gridsearch
-from tensorflow.keras import callbacks
 # https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
 from sklearn.metrics import f1_score #, accuracy_score, precision_score, recall_score, confusion_matrix
 import re
@@ -79,6 +79,9 @@ class Data:
         This code needs work if we're going to manually process the data.
         Right now, using the built-in functions is the best way to go.
         
+        I started to write it before I realized this one was already done, so I'm leaving it here for now,
+        but it needs to be adjusted to work on the .csv file.
+        
         TODO: Lowercase all words, remove punctuation, remove HTML tags, remove stopwords, etc.
         '''
         logger.info("Processing data")
@@ -110,7 +113,7 @@ class Data:
         logger.info("Data processed")
     
     def _pad_sequences(self, data: pd.DataFrame) -> pd.DataFrame:
-        data = tf.keras.preprocessing.sequence.pad_sequences(data, padding = "post", maxlen = 256)
+        data = tf.keras.preprocessing.sequence.pad_sequences(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
 
         return data
     
@@ -253,12 +256,15 @@ class RNN(NN):
             
     def init_model(self) -> tf.keras.Model:
         logger.info(f"Initializing {self.name} model")
-        self.model = Sequential([
-            Embedding(input_dim = self.vocab_size, output_dim = 128),
-            SimpleRNN(units = 64, return_sequences = True, dropout = 0.1, recurrent_dropout = 0.1),
-            SimpleRNN(units = 32, dropout=0.1),
-            Dense(units = 1, activation = 'sigmoid')
-        ])
+        self.model = Sequential([Embedding(input_dim = self.vocab_size, output_dim = 128),
+                                Conv1D(filters = 32, kernel_size = 4, padding = 'same', activation = 'relu'),
+                                MaxPooling1D(pool_size = 2),
+                                Conv1D(filters = 64, kernel_size = 5, padding = 'same', activation = 'relu'),
+                                MaxPooling1D(pool_size = 4),
+                                Conv1D(filters = 128, kernel_size = 6, padding = 'same', activation = 'relu'),
+                                MaxPooling1D(pool_size = 8),
+                                Dense(32),
+                                Dense(1, activation = 'sigmoid')])
         logger.info(f"Model {self.name} initialized")
     
 class LSTMCNN(NN):
