@@ -18,18 +18,17 @@ import sys
 import json
 import uuid
 import pickle
-from tensorflow.keras.layers import LSTM, SimpleRNN, Embedding, Dense, Conv1D, MaxPooling1D
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.datasets import imdb as imdb
 from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, SimpleRNN, Embedding, Dense, Conv1D, MaxPooling1D
+from tensorflow.keras.datasets import imdb as imdb
+from tensorflow.keras.preprocessing.sequence import pad_sequences as padder
 from sklearn.naive_bayes import MultinomialNB as mnb
 from sklearn.ensemble import HistGradientBoostingClassifier as hgbc
 from sklearn.ensemble import RandomForestClassifier as rfcn
-from sklearn.preprocessing import StandardScaler as scaler
-from tensorflow.keras import callbacks
 from sklearn.model_selection import GridSearchCV as gridsearch
-#https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
-from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
+from tensorflow.keras import callbacks
+# https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
+from sklearn.metrics import f1_score #, accuracy_score, precision_score, recall_score, confusion_matrix
 import re
 import sys, os, warnings
 
@@ -43,7 +42,6 @@ AVERAGE = "weighted"
 METRICS = "accuracy"
 BATCH_SIZE = 32
 EPOCHS = 25
-INTERNAL_DIMENSION = 128
 PADDING_LENGTH = 256
 CV = 2
 SCORING = "f1_weighted"
@@ -58,7 +56,7 @@ class Data:
     def __init__(self, test: bool = False) -> None:
         self.test = test
         self.x_train, self.y_train, self.x_test, self.y_test = self._load_data()
-        if self.test == True:
+        if parser.data['test'] == True:
             self.x_train = self.x_train[10:20]
             self.y_train = self.y_train[10:20]
             self.x_test = self.x_test[10:20]
@@ -70,11 +68,11 @@ class Data:
         logger.info("Data loaded from keras.datasets.imdb.load_data()")
         
         logger.info("Padding sequences")
-        x_train = pad_sequences(x_train, maxlen = PADDING_LENGTH, padding = 'post', truncating = 'post')
-        x_test = pad_sequences(x_test, maxlen = PADDING_LENGTH, padding = 'post', truncating = 'post')
+        x_train = padder(x_train, maxlen = PADDING_LENGTH, padding = 'post', truncating = 'post')
+        x_test = padder(x_test, maxlen = PADDING_LENGTH, padding = 'post', truncating = 'post')
         logger.info("Sequences padded")
         
-        return np.array(x_train), np.array(y_train), np.array(x_test), np.array(y_test)
+        return x_train, y_train, x_test, y_test
 
     def _process_data(self) -> None:
         '''
@@ -256,10 +254,10 @@ class RNN(NN):
     def init_model(self) -> tf.keras.Model:
         logger.info(f"Initializing {self.name} model")
         self.model = Sequential([
-            Embedding(input_dim=self.vocab_size, output_dim=128),
-            SimpleRNN(units=64, return_sequences=True, dropout=0.1, recurrent_dropout=0.1),
-            SimpleRNN(units=32, dropout=0.1),
-            Dense(units=1, activation='sigmoid')
+            Embedding(input_dim = self.vocab_size, output_dim = 128),
+            SimpleRNN(units = 64, return_sequences = True, dropout = 0.1, recurrent_dropout = 0.1),
+            SimpleRNN(units = 32, dropout=0.1),
+            Dense(units = 1, activation = 'sigmoid')
         ])
         logger.info(f"Model {self.name} initialized")
     
@@ -270,16 +268,16 @@ class LSTMCNN(NN):
         
     def init_model(self) -> tf.keras.Model:
         logger.info(f"Initializing {self.name} model")
-        self.model = Sequential([Embedding(input_dim=self.vocab_size, output_dim=128),
-                                Conv1D(filters=32, kernel_size=4, padding='same', activation='relu'),
-                                MaxPooling1D(pool_size=2),
-                                Conv1D(filters=64, kernel_size=5, padding='same', activation='relu'),
-                                MaxPooling1D(pool_size=4),
-                                Conv1D(filters=128, kernel_size=6, padding='same', activation='relu'),
-                                MaxPooling1D(pool_size=8),
+        self.model = Sequential([Embedding(input_dim = self.vocab_size, output_dim = 128),
+                                Conv1D(filters = 32, kernel_size = 4, padding = 'same', activation = 'relu'),
+                                MaxPooling1D(pool_size = 2),
+                                Conv1D(filters = 64, kernel_size = 5, padding = 'same', activation = 'relu'),
+                                MaxPooling1D(pool_size = 4),
+                                Conv1D(filters = 128, kernel_size = 6, padding = 'same', activation = 'relu'),
+                                MaxPooling1D(pool_size = 8),
                                 LSTM(64, dropout = 0.2),
                                 Dense(32),
-                                Dense(1, activation='sigmoid')])
+                                Dense(1, activation = 'sigmoid')])
         logger.info(f"Model {self.name} initialized")
     
 class MNB(Ensemble):
@@ -321,7 +319,7 @@ class RFC(Ensemble):
 class HGBC(Ensemble):
     def __init__(self) -> None:
         super().__init__()
-        self.name = "HistGradientBoostingClassifier"
+        self.name = "Histogram-based Gradient Boosting Classification Tree"
         self.params = { 'max_iter': [ 100, 200, 300 ],
                         'max_depth': [ 10, 20, 30 ],
                         'learning_rate': [ 0.1, 0.01, 0.001 ]
@@ -372,6 +370,12 @@ class Arguments(argparse.ArgumentParser):
         super().__init__(prog = "project", 
                         description = "Train various models for sentiment analysis on the IMDB dataset",
                         allow_abbrev = True)
+        
+        self.add_argument("-t",
+                          "--test",
+                          help = "run the program in test mode",
+                          action = "store_true",
+                          default = False)
         
         self.add_argument("-u", 
                             "--uuid", 
@@ -503,6 +507,8 @@ class Parsing:
                 logger.info(f"The Model at ./models/{self.data['uuid']} does not exist. Exiting...")
                 exit(1)
                 
+                
+        # Temporary UUID generation until I add in the code to load if it is provided, or generate if it is not.
         else:
             self.data['uuid'] = uuid.uuid4().hex
             logger.info(f"Model UUID not provided. Generating new UUID: {self.data['uuid']}")
