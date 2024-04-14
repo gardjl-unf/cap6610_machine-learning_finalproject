@@ -17,6 +17,7 @@ import sys
 import json
 import uuid
 import pickle
+import string
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Embedding, Dense, Conv1D, MaxPooling1D
@@ -602,6 +603,7 @@ class Parsing:
             else:
                 self.testinput = self.data['testinput']
                 logger.info(f"Processing input testinput: {self.testinput}")
+                self.testinput = self._remove_punctuation(self.testinput)
                 self.testinput = self._tokenize(self.testinput)
                 self.testinput = self._pad_sequences(self.testinput)
                 self.data['testinput'] = self.testinput
@@ -610,6 +612,10 @@ class Parsing:
 ################################
 ### INPUT DATA MANIPULATION ###
 ###############################
+
+    def _remove_punctuation(self, data: str) -> str:
+        
+        return data.translate(str.maketrans('', '', string.punctuation))
 
     def _tokenize(self, data: str) -> np.array:
         word_index = imdb.get_word_index()
