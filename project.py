@@ -18,6 +18,7 @@ import json
 import uuid
 import pickle
 import string
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Embedding, Dense, Conv1D, MaxPooling1D
@@ -36,6 +37,10 @@ import sys, os, warnings
 if not sys.warnoptions:
     warnings.simplefilter("ignore")
     os.environ["PYTHONWARNINGS"] = "ignore"
+    
+# Disable TensorFlow logging
+tf.keras.utils.disable_interactive_logging()
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 LOG_FORMAT_testinput = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
 RMSPROP_CLIP = 10.0
@@ -51,7 +56,6 @@ N_JOBS = -1
 AVERAGE = "weighted"
 RETURN_TRAIN_SCORE = True
 BUFFER_LENGTH = 32
-
 
 class Data:
     def __init__(self, test: bool = False) -> None:
@@ -375,9 +379,6 @@ class Logging:
         self.logger.addHandler(self.get_console_handler())
         self.logger.propagate = False
         self.logger.info(f"Logging initialized -- {logger_name}")
-        # Redirect stdout and stderr to logger
-        #sys.stdout = self.logger.debug
-        #sys.stderr = self.logger.error
 
     def get_console_handler(self) -> logging.StreamHandler:
         console_handler = logging.StreamHandler(sys.stdout)
