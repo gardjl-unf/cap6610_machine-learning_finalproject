@@ -190,11 +190,13 @@ class NN(Model):
         logger.info(f"Saved model weights to './models/{self.uuid}/{self.name}-model.weights.h5'")
         
     def load(self) -> None:
-        #self.init_model()
+        self.init_model()
+        if isinstance(self, RNN):
+            self.optimize()
         logger.info(f"Loading model from './models/{self.uuid}/{self.name}-model.weights.h5'")
+        self.model.build((None, PADDING_LENGTH))
         self.model.load_weights(f'./models/{self.uuid}/{self.name}-model.weights.h5')
         logger.info(f"Loaded model weights from './models/{self.uuid}/{self.name}-model.weights.h5'")
-        self.model.summary()
         
     def print(self) -> None:
         logger.info(f"{self.name}:  Loss - {self.model_score[0]}, Test Data Accuracy - {self.model_score[1]}")
@@ -454,9 +456,8 @@ class Agent:
             logger.info(f"Loading data for UUID: {self.uuid}")
             self.load()
             for algorithm in self.algorithms:
-                logger.info(f"Loading {algorithm} model")
                 model = algorithm()
-                #model.init_model()
+                logger.info(f"Loading {model.name} model")
                 model.load()
                 self.models.append(model)
         logger.info(f"Agent initialized with UUID: {self.uuid}")
@@ -491,12 +492,18 @@ class Agent:
             logger.warning("No test input provided. Exiting...")
             exit(1)
         logger.info(f"Running models on input text")
+        
+        self.testinput = np.squeeze(self.testinput)
 
         predictions = []
         for model in self.models:
-            model_prediction = model.predict(np.array([self.testinput]))  # Ensure the input is correctly formatted as a batch
-            predictions.append(model_prediction[0])
-            logger.info(f'Prediction from {model.name}: {"Positive" if model_prediction[0] > 0.5 else "Negative"}')
+            model_prediction = model.model.predict(np.array([self.testinput]))
+            if isinstance(model, NN):
+                predictions.append(model_prediction[0][0])
+            else:
+                predictions.append(model_prediction[0])
+                
+            logger.info(f'Prediction from {model.name}: {"Positive" if predictions[-1] > 0.5 else "Negative"}')
 
         binary_outcomes = [1 if pred > 0.5 else 0 for pred in predictions]
 
