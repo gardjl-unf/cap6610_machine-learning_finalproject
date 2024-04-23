@@ -619,6 +619,8 @@ class Agent:
             self.models.append(model)
             model.save()
         self.learning_curves()
+        if self.testinput is not None:
+            self._run_models()
             
     def _run_models(self) -> None:
         if self.testinput is None:
@@ -626,8 +628,13 @@ class Agent:
             exit(1)
         logger.info(f"Running models on input text")
         
+        logger.info(f"Processing input testinput: {self.testinput}")
+        self.testinput = self._remove_punctuation(self.testinput)
+        self.testinput = self._tokenize(self.testinput)
+        self.testinput = self._pad_sequences(self.testinput)
         self.testinput = np.squeeze(self.testinput)
-
+        logger.info(f"Input processed")
+        
         predictions = []
         for model in self.models:
             model_prediction = model.model.predict(np.array([self.testinput]))
@@ -657,6 +664,29 @@ class Agent:
 
         return final_prediction
     
+    ################################
+    ### INPUT DATA MANIPULATION ###
+    ###############################
+
+    def _remove_punctuation(self, data: str) -> str:
+        
+        return data.translate(str.maketrans('', '', string.punctuation))
+
+    def _tokenize(self, data: str) -> np.array:
+        word_index = imdb.get_word_index()
+
+        words = data.lower().split()
+
+        indices = [word_index.get(word, 2) + 3 for word in words]
+
+        return np.array(indices)
+        
+    def _pad_sequences(self, data) -> np.array:
+        data = [data]
+        data = padder(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
+
+        return data
+    
     def _process_flags(self) -> None:
         algorithms = [RNN, LSTMCNN, RFC, MNB, HGBC, SVC]
         if not parser.data['neuralnetworks']:
@@ -671,43 +701,7 @@ class Agent:
         return algorithms
     
     def learning_curves(self) -> None:
-        fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(10, 6), sharey=True)
-
-        common_params = {
-            "X": data.X,
-            "y": data.Y,
-            "train_sizes": np.linspace(0.1, 1.0, 5),
-            "cv": ShuffleSplit(n_splits = CV, test_size = parser.data['testpercentage'], random_state = parser.data['seed']),
-            "n_jobs": -1,
-            "line_kw": {"marker": "o"},
-            "std_display_style": "fill_between",
-        }
-
-        # For each model in self.models, plot learning curves for each scorer
-        models = [model.model for model in self.models]
-        logger.info(f"Plotting learning curves for {len(models)} models")
-        logger.info(f"{models}")
-        
-        for scorer in ["accuracy", "precision", "recall", "f1"]:
-            for i in range(0, len(models), 3):
-                j = 0
-                if len(models) - i >= 3:
-                    for ax_idx, estimator in enumerate([models[i:i+2]]):
-                        LearningCurveDisplay.from_estimator(estimator, **common_params, score_name = scorer.title(), scoring = scorer, ax = ax[ax_idx])
-                        handles, label = ax[ax_idx].get_legend_handles_labels()
-                        ax[ax_idx].legend(handles[:3], ["Training Score", "Test Score"], loc = "lower right")
-                        ax[ax_idx].set_title(f"Learning Curve for {estimator.__class__.__name__}")
-                    logger.info(f"Saving learning curves to './models/{self.uuid}/{j}-learningcurves-{scorer}.png")
-                    plt.savefig(f"./models/j-{self.uuid}/{j}-learningcurves-{scorer}.png")
-                else:
-                    for ax_idx, estimator in enumerate([models[i:]]):
-                        LearningCurveDisplay.from_estimator(estimator, **common_params, score_name = scorer.title(), scoring = scorer, ax = ax[ax_idx])
-                        handles, label = ax[ax_idx].get_legend_handles_labels()
-                        ax[ax_idx].legend(handles[:3], ["Training Score", "Test Score"], loc = "lower right")
-                        ax[ax_idx].set_title(f"Learning Curve for {estimator.__class__.__name__}")
-                    logger.info(f"Saving learning curves to './models/{self.uuid}/{j}-learningcurves-{scorer}.png")
-                    plt.savefig(f"./models/{self.uuid}/{j}-learningcurves-{scorer}.png")
-                j += 1
+        pass
             
     def save(self) -> None:
         logger.info(f"Saving data to './models/{self.uuid}/'")
@@ -779,42 +773,6 @@ class Parsing:
             if not os.path.exists(f'./models/{self.data["uuid"]}'):
                 logger.warning(f"The Model at ./models/{self.data['uuid']} does not exist. Exiting...")
                 exit(1)
-            
-        if args.testinput is not None:
-            if args.uuid is None:
-                logger.warning(f"Cannot process testinput without a UUID. Exiting...")
-                exit(1)
-            else:
-                self.testinput = self.data['testinput']
-                logger.info(f"Processing input testinput: {self.testinput}")
-                self.testinput = self._remove_punctuation(self.testinput)
-                self.testinput = self._tokenize(self.testinput)
-                self.testinput = self._pad_sequences(self.testinput)
-                self.data['testinput'] = self.testinput
-                logger.info(f"Input processed")
-            
-################################
-### INPUT DATA MANIPULATION ###
-###############################
-
-    def _remove_punctuation(self, data: str) -> str:
-        
-        return data.translate(str.maketrans('', '', string.punctuation))
-
-    def _tokenize(self, data: str) -> np.array:
-        word_index = imdb.get_word_index()
-
-        words = data.lower().split()
-
-        indices = [word_index.get(word, 2) + 3 for word in words]
-
-        return np.array(indices)
-        
-    def _pad_sequences(self, data) -> np.array:
-        data = [data]
-        data = padder(data, maxlen = PADDING_LENGTH, padding = "post", truncating = "post")
-
-        return data
 
 ###############
 ###  MAIN   ###
