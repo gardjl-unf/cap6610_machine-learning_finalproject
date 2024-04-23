@@ -672,7 +672,7 @@ class Agent:
                 logger.info(f"Loading {model.name} model")
                 model.load()
                 self.models.append(model)
-        logger.info(f"Agent initialized with UUID: {self.uuid}")
+        logger.info(f"Agent initialized with ID: {self.uuid}")
 
     def run(self) -> None:
         if self.models != []:
