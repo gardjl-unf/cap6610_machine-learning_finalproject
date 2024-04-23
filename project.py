@@ -701,7 +701,37 @@ class Agent:
         return algorithms
     
     def learning_curves(self) -> None:
-        pass
+        common_params = {
+            "X": data.X,
+            "y": data.Y,
+            "train_sizes": np.linspace(0.1, 1.0, 5),
+            "cv": ShuffleSplit(n_splits=CV, test_size=parser.data['testpercentage'], random_state=parser.data['seed']),
+            "n_jobs": -1,
+            "line_kw": {"marker": "o"},
+            "std_display_style": "fill_between",
+        }
+
+        for scorer in ["accuracy", "precision", "recall"]:
+            for estimator in [mnb(), hgbc(), rfcn(), svc()]:
+                fig, ax = plt.subplots(figsize=(8, 5))
+                LearningCurveDisplay.from_estimator(
+                    estimator,
+                    **common_params,
+                    score_name=scorer.title(),
+                    scoring=scorer,
+                    ax=ax
+                )
+
+                handles, label = ax.get_legend_handles_labels()
+                ax.legend(handles[:2], ["Training Score", "Test Score"], loc="lower right")
+                ax.set_title(f"{scorer.title()} Learning Curve for {estimator.__class__.__name__}")
+                
+                file_path = f"./models/{self.uuid}/learningcurve-{estimator.__class__.__name__}-{scorer}.png"
+                plt.savefig(file_path)
+                plt.close(fig)
+
+                logger.info(f"Saved learning curve to '{file_path}'")
+
             
     def save(self) -> None:
         logger.info(f"Saving data to './models/{self.uuid}/'")
