@@ -11,8 +11,9 @@ __status__ = "Development"
 '''
 TODO: Make early cancellation optional for networks, as they might be stopping early when improvement is still possible. DONE
 TODO: Output information about network training. DONE
-TODO: Run input string against "best" versions of networks coming from the grid searches.
+TODO: Run input string against "best" versions of networks coming from the grid searches. DONE
 TODO: Whatever Conor wanted to do with the raw CSV data.
+TODO: Color code.
 '''
 
 import numpy as np
@@ -65,21 +66,20 @@ METRICS = ["f1_score",
            "recall_score", 
            "confusion_matrix"]
 LC_METRICS = ["accuracy", "precision", "recall", "f1"]
-MODEL_NAMES = ["Recurrent Neural Network", 
+MODEL_NAMES = ["Convolutional Neural Network", 
                "Convolutional Neural Network (LSTM)", 
                "Random Forest", 
                "Multinomial Naive Bayes", 
-               "HGBC", 
-               "SVC"]
+               "Histogram-based Gradient Boosting Classification Tree", 
+               "Support Vector Machine"]
 MODEL_CALLS = [rfcn(), mnb(), hgbc(), svc()]
 DEFAULT_METRIC = "f1_score"
 RMSPROP_CLIP = 10.0
 AVERAGE = "weighted"
 METRICS = "accuracy"
 BATCH_SIZE = 32
-EPOCHS = 25
 PADDING_LENGTH = 256
-CV = 2
+CV = 10
 SCORING = "f1_weighted"
 ERROR_SCORE = 0.0
 N_JOBS = -1
@@ -93,10 +93,10 @@ class Data:
         self.x_train, self.y_train, self.x_test, self.y_test = self._load_data()
         if parser.data['test'] == True:
             logger.info("Test mode enabled. Using subset of data.")
-            self.x_train = self.x_train[10:20]
-            self.y_train = self.y_train[10:20]
-            self.x_test = self.x_test[10:20]
-            self.y_test = self.y_test[10:20]
+            self.x_train = self.x_train[:100]
+            self.y_train = self.y_train[:100]
+            self.x_test = self.x_test[:100]
+            self.y_test = self.y_test[:100]
         self.X = np.concatenate((self.x_train, self.x_test), axis = 0)
         self.Y = np.concatenate((self.y_train, self.y_test), axis = 0)
         
@@ -219,20 +219,18 @@ class NN(Model):
                                         patience = 5,
                                         restore_best_weights = True)
         if parser.data['cancelearly']:
-            history = self.model.fit(self.x_train, 
+            self.history = self.model.fit(self.x_train, 
                                           self.y_train, 
                                           batch_size = BATCH_SIZE, 
-                                          epochs = EPOCHS, 
+                                          epochs = parser.data['epochs'], 
                                           validation_data = (self.x_test, self.y_test),
                                           callbacks = [earlystopping])
         else:
-            history = self.model.fit(self.x_train, 
+            self.history = self.model.fit(self.x_train, 
                                           self.y_train, 
                                           batch_size = BATCH_SIZE, 
-                                          epochs = EPOCHS, 
+                                          epochs = parser.data['epochs'], 
                                           validation_data = (self.x_test, self.y_test))
-            
-        self.history = pd.DataFrame(history.history)
         
     def optimize(self) -> None:
         self.optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
@@ -245,23 +243,45 @@ class NN(Model):
         self.model.compile(optimizer = self.optimizer, loss = self.loss_function, metrics = [METRICS])
         
     def save(self) -> None:
-        logger.info(f"Saving model to './models/{self.uuid}/{self.name}-model.weights.h5'")
-        self.model.save_weights(f'./models/{self.uuid}/{self.name}-model.weights.h5')
-        logger.info(f"Saved model weights to './models/{self.uuid}/{self.name}-model.weights.h5'")
+        logger.info(f"Saving model to './models/{self.uuid}/{self.name} - Model.weights.h5'")
+        self.model.save_weights(f'./models/{self.uuid}/{self.name} - Model.weights.h5')
+        logger.info(f"Saved model weights to './models/{self.uuid}/{self.name} - Model.weights.h5'")
     
     def save_metrics(self) -> None:
-        hist_csv_file = f"./models/{self.uuid}/{self.name}-training.csv"
+        history = pd.DataFrame(self.history.history)
+        hist_csv_file = f"./models/{self.uuid}/{self.name} - Training History.csv"
         with open(hist_csv_file, mode='w') as f:
-            self.history.to_csv(f)
+            history.to_csv(f)
+            
+        plt.plot(self.history.history['accuracy'])
+        plt.plot(self.history.history['val_accuracy'])
+        plt.title(f'{self.name} Model Accuracy')
+        plt.ylabel('Accuracy')
+        plt.xlabel('Epoch')
+        plt.legend(['Train', 'Validation'], loc='upper left')
+        file_path = f"./models/{self.uuid}/{self.name} - Accuracy.png"
+        plt.savefig(file_path)
+        plt.close()
+        
+        plt.plot(self.history.history['loss'])
+        plt.plot(self.history.history['val_loss'])
+        plt.title(f'{self.name} Loss')
+        plt.ylabel('Loss')
+        plt.xlabel('Epoch')
+        plt.legend(['Training', 'Validation'], loc='upper left')
+        file_path = f"./models/{self.uuid}/{self.name} - Loss.png"
+        plt.savefig(file_path)
+        plt.close()
+
         
     def load(self) -> None:
         self.init_model()
-        if isinstance(self, RNN):
+        if isinstance(self, NN):
             self.optimize()
-        logger.info(f"Loading model from './models/{self.uuid}/{self.name}-model.weights.h5'")
+        logger.info(f"Loading model from './models/{self.uuid}/{self.name} - Model.weights.h5'")
         self.model.build((None, PADDING_LENGTH))
-        self.model.load_weights(f'./models/{self.uuid}/{self.name}-model.weights.h5')
-        logger.info(f"Loaded model weights from './models/{self.uuid}/{self.name}-model.weights.h5'")
+        self.model.load_weights(f'./models/{self.uuid}/{self.name} - Model.weights.h5')
+        logger.info(f"Loaded model weights from './models/{self.uuid}/{self.name} - Model.weights.h5'")
         
     def print(self) -> None:
         logger.info(f"{self.name}:  Accuracy - {self.model_score[1]}")
@@ -296,7 +316,7 @@ class Ensemble(Model):
         self.precision = precision(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))   
         self.recall = recall(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
         self.confusion = confusion(self.y_test, self.predictions)
-        self.rmse = mse(self.y_test, self.predictions, squared=False)
+        self.rmse = mse(self.y_test, self.predictions, squared = False)
         
     def best_score(self) -> None:
             self.best_f1 = f1(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
@@ -304,27 +324,27 @@ class Ensemble(Model):
             self.best_precision = precision(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
             self.best_recall = recall(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
             self.best_confusion = confusion(self.y_test, self.best_predictions)
-            self.best_rmse = mse(self.y_test, self.best_predictions, squared=False)
+            self.best_rmse = mse(self.y_test, self.best_predictions, squared = False)
             
     def save_metrics(self, best: bool = False) -> None:
         if best:
-            logger.info(f"Saving best metrics to './models/{self.uuid}/{self.name}-best-metrics.csv'")
+            logger.info(f"Saving best metrics to './models/{self.uuid}/{self.name} - Metrics - Best.csv'")
             metrics = pd.DataFrame({"Best F1 Score": [self.best_f1],
                                     "BestAccuracy": [self.best_accuracy],
                                     "Best Precision": [self.best_precision],
                                     "Best Recall": [self.best_recall],
                                     "Best RMSE": [self.best_rmse]})
-            metrics.to_csv(f"./models/{self.uuid}/{self.name}-best-metrics.csv")
-            logger.info(f"Saved best metrics to './models/{self.uuid}/{self.name}-best-metrics.csv'")
+            metrics.to_csv(f"./models/{self.uuid}/{self.name} - Metrics - Best.csv")
+            logger.info(f"Saved best metrics to './models/{self.uuid}/{self.name} - Metrics - Best.csv'")
         else:
-            logger.info(f"Saving metrics to './models/{self.uuid}/{self.name}-metrics.csv'")
+            logger.info(f"Saving metrics to './models/{self.uuid}/{self.name} - Metrics.csv'")
             metrics = pd.DataFrame({"F1 Score": [self.f1],
                                     "Accuracy": [self.accuracy],
                                     "Precision": [self.precision],
                                     "Recall": [self.recall],
                                     "RMSE": [self.rmse]})
-            metrics.to_csv(f"./models/{self.uuid}/{self.name}-metrics.csv")
-            logger.info(f"Saved metrics to './models/{self.uuid}/{self.name}-metrics.csv'")
+            metrics.to_csv(f"./models/{self.uuid}/{self.name} - Metrics.csv")
+            logger.info(f"Saved metrics to './models/{self.uuid}/{self.name} - Metrics.csv'")
         self.confusion_matrix(best)
             
     def confusion_matrix(self, best: bool = False) -> None:
@@ -333,70 +353,74 @@ class Ensemble(Model):
         else:
             cm = self.confusion
         class_names = ['Negative', 'Positive']
-        fig, ax = plt.subplots(figsize=(8, 6))
+        fig, ax = plt.subplots(figsize = (8, 6))
         cmap = plt.get_cmap('Blues')
 
-        im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+        im = ax.imshow(cm, interpolation='nearest', cmap = cmap)
 
-        cbar = ax.figure.colorbar(im, ax=ax)
-        cbar.ax.set_ylabel('Counts', rotation=-90, va="bottom")
+        cbar = ax.figure.colorbar(im, ax = ax)
+        cbar.ax.set_ylabel('Counts', rotation = -90, va = "bottom")
 
-        ax.set(xticks=np.arange(cm.shape[1]),
-            yticks=np.arange(cm.shape[0]),
-            xticklabels=class_names, yticklabels=class_names,
-            title='Confusion Matrix',
-            ylabel='True label',
-            xlabel='Predicted label')
+        ax.set(xticks = np.arange(cm.shape[1]),
+               yticks = np.arange(cm.shape[0]),
+               xticklabels=class_names, yticklabels = class_names,
+               ylabel = 'True label',
+               xlabel = 'Predicted label')
+        
+        if best:
+            ax.set(title = 'Best Confusion Matrix')
+        else:
+            ax.set(title = 'Confusion Matrix')
 
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+        plt.setp(ax.get_xticklabels(), rotation = 45, ha = "right", rotation_mode = "anchor")
 
         fmt = 'd'
         thresh = cm.max() / 2.
         for i in range(cm.shape[0]):
             for j in range(cm.shape[1]):
                 ax.text(j, i, format(cm[i, j], fmt),
-                        ha="center", va="center",
-                        color="white" if cm[i, j] > thresh else "black")
+                        ha = "center", va = "center",
+                        color = "white" if cm[i, j] > thresh else "black")
 
         fig.tight_layout()
 
         if best:
-            filename = f"./models/{self.uuid}/{self.name}-best-confusion.png"
+            filename = f"./models/{self.uuid}/{self.name} - Confusion Matrix - Best.png"
         else:
-            filename = f"./models/{self.uuid}/{self.name}-confusion.png"
+            filename = f"./models/{self.uuid}/{self.name} - Confusion Matrix"
 
         plt.savefig(filename)
         plt.close(fig)
         logger.info(f"Saved best confusion matrix to '{filename}'")
         
     def save(self) -> None:
-        logger.info(f"Saving model to './models/{self.uuid}/{self.name}-model.pkl'")
-        with open(f'./models/{self.uuid}/{self.name}-model.pkl', 'wb') as f:
+        logger.info(f"Saving model to './models/{self.uuid}/{self.name} - Model.pkl'")
+        with open(f'./models/{self.uuid}/{self.name} - Model.pkl', 'wb') as f:
             pickle.dump(self.model, f)
-        logger.info(f"Saved model to './models/{self.uuid}/{self.name}-model.pkl'")
-        logger.info(f"Saving best model to './models/{self.uuid}/{self.name}-best-model.pkl'")
-        with open(f'./models/{self.uuid}/{self.name}-best-model.pkl', 'wb') as f:
+        logger.info(f"Saved model to './models/{self.uuid}/{self.name} - Model.pkl'")
+        logger.info(f"Saving best model to './models/{self.uuid}/{self.name} - Model - Best.pkl'")
+        with open(f'./models/{self.uuid}/{self.name} - Model - Best.pkl', 'wb') as f:
             pickle.dump(self.best_model, f)
-        logger.info(f"Saved best model to './models/{self.uuid}/{self.name}-best-model.pkl'")
-        logger.info(f"Saving best params to './models/{self.uuid}/{self.name}-best-params.json'")
-        with open(f'./models/{self.uuid}/{self.name}-best-params.json', 'w') as f:
+        logger.info(f"Saved best model to './models/{self.uuid}/{self.name} - Model - Best.pkl'")
+        logger.info(f"Saving best params to './models/{self.uuid}/{self.name} - Parameters - Best.json'")
+        with open(f'./models/{self.uuid}/{self.name} - Parameters - Best.json', 'w') as f:
             json.dump(self.best_params, f)
-        logger.info(f"Saved best params to './models/{self.uuid}/{self.name}-best-params.json'")
+        logger.info(f"Saved best params to './models/{self.uuid}/{self.name} - Parameters - Best.json'")
         
     def load(self) -> None:
         self.init_model()
-        logger.info(f"Loading model from './models/{self.uuid}/{self.name}-model.pkl'")
-        with open(f'./models/{self.uuid}/{self.name}-model.pkl', 'rb') as f:
+        logger.info(f"Loading model from './models/{self.uuid}/{self.name} - Model.pkl'")
+        with open(f'./models/{self.uuid}/{self.name} - Model.pkl', 'rb') as f:
             self.model = pickle.load(f)
-        logger.info(f"Loaded model from './models/{self.uuid}/{self.name}-model.pkl'")
-        logger.info(f"Loading best model from './models/{self.uuid}/{self.name}-best-model.pkl'")
-        with open(f'./models/{self.uuid}/{self.name}-best-model.pkl', 'rb') as f:
+        logger.info(f"Loaded model from './models/{self.uuid}/{self.name} - Model.pkl'")
+        logger.info(f"Loading best model from './models/{self.uuid}/{self.name} - Model - Best.pkl'")
+        with open(f'./models/{self.uuid}/{self.name} - Model - Best.pkl', 'rb') as f:
             self.best_model = pickle.load(f)
-        logger.info(f"Loaded best model from './models/{self.uuid}/{self.name}-best-model.pkl'")
-        logger.info(f"Loading best params from './models/{self.uuid}/{self.name}-best-params.json'")
-        with open(f'./models/{self.uuid}/{self.name}-best-params.json', 'r') as f:
+        logger.info(f"Loaded best model from './models/{self.uuid}/{self.name} - Model - Best.pkl'")
+        logger.info(f"Loading best params from './models/{self.uuid}/{self.name} - Parameters - Best.json'")
+        with open(f'./models/{self.uuid}/{self.name} - Parameters - Best.json', 'r') as f:
             self.best_params = json.load(f)
-        logger.info(f"Loaded best params from './models/{self.uuid}/{self.name}-best-params.json'")
+        logger.info(f"Loaded best params from './models/{self.uuid}/{self.name} - Parameters - Best.json'")
     
     def print(self, best: bool = False) -> None:
         if best:
@@ -411,47 +435,48 @@ class Ensemble(Model):
             logger.info(f"{self.name} Best Precision: {self.precision}")
             logger.info(f"{self.name} Best Recall: {self.recall}")
             logger.info(f"{self.name} Best RMSE: {self.rmse}")
-class RNN(NN):
+            
+class CNN(NN):
     def __init__(self) -> None:
         super().__init__()
-        self.name = "RNN"
+        self.name = MODEL_NAMES[0]
             
     def init_model(self) -> None:
         logger.info(f"Initializing {self.name} model")
         self.model = Sequential([Embedding(input_dim = self.vocab_size, output_dim = 128),
-                                Conv1D(filters = 32, kernel_size = 4, padding = 'same', activation = 'relu'),
-                                MaxPooling1D(pool_size = 2),
-                                Conv1D(filters = 64, kernel_size = 5, padding = 'same', activation = 'relu'),
-                                MaxPooling1D(pool_size = 4),
-                                Conv1D(filters = 128, kernel_size = 6, padding = 'same', activation = 'relu'),
-                                MaxPooling1D(pool_size = 8),
-                                Dense(32),
-                                Dense(1, activation = 'sigmoid')])
+                                 Conv1D(filters = 32, kernel_size = 4, padding = 'same', activation = 'relu'),
+                                 MaxPooling1D(pool_size = 2),
+                                 Conv1D(filters = 64, kernel_size = 5, padding = 'same', activation = 'relu'),
+                                 MaxPooling1D(pool_size = 4),
+                                 Conv1D(filters = 128, kernel_size = 6, padding = 'same', activation = 'relu'),
+                                 MaxPooling1D(pool_size = 8),
+                                 Dense(32),
+                                 Dense(1, activation = 'sigmoid')])
         logger.info(f"Model {self.name} initialized")
     
 class LSTMCNN(NN):
     def __init__(self) -> None:
         super().__init__()
-        self.name = "LSTM"
+        self.name = MODEL_NAMES[1]
         
     def init_model(self) -> None:
         logger.info(f"Initializing {self.name} model")
         self.model = Sequential([Embedding(input_dim = self.vocab_size, output_dim = 128),
-                                Conv1D(filters = 32, kernel_size = 4, padding = 'same', activation = 'relu'),
-                                MaxPooling1D(pool_size = 2),
-                                Conv1D(filters = 64, kernel_size = 5, padding = 'same', activation = 'relu'),
-                                MaxPooling1D(pool_size = 4),
-                                Conv1D(filters = 128, kernel_size = 6, padding = 'same', activation = 'relu'),
-                                MaxPooling1D(pool_size = 8),
-                                LSTM(64, dropout = 0.2),
-                                Dense(32),
-                                Dense(1, activation = 'sigmoid')])
+                                 Conv1D(filters = 32, kernel_size = 4, padding = 'same', activation = 'relu'),
+                                 MaxPooling1D(pool_size = 2),
+                                 Conv1D(filters = 64, kernel_size = 5, padding = 'same', activation = 'relu'),
+                                 MaxPooling1D(pool_size = 4),
+                                 Conv1D(filters = 128, kernel_size = 6, padding = 'same', activation = 'relu'),
+                                 MaxPooling1D(pool_size = 8),
+                                 LSTM(64, dropout = 0.2),
+                                 Dense(32),
+                                 Dense(1, activation = 'sigmoid')])
         logger.info(f"Model {self.name} initialized")
         
 class SVC(Ensemble):
     def __init__(self) -> None:
         super().__init__()
-        self.name = "Support Vector Classifier"
+        self.name = MODEL_NAMES[5]
         self.params = { 'C': [ 1.0, 0.5, 0.1 ],
                         'kernel': [ 'linear', 'poly', 'rbf', 'sigmoid' ],
                         'gamma': [ 'scale', 'auto' ]
@@ -474,7 +499,7 @@ class SVC(Ensemble):
 class MNB(Ensemble):
     def __init__(self) -> None:
         super().__init__()
-        self.name = "Multinomial Naive Bayes"
+        self.name = MODEL_NAMES[3]
         self.params = { 'alpha': [ 1.0, 0.5, 0.1 ] }
         
     def init_model(self) -> None:
@@ -487,7 +512,7 @@ class MNB(Ensemble):
 class RFC(Ensemble):
     def __init__(self) -> None:
         super().__init__()
-        self.name = "Random Forest Classifier"
+        self.name = MODEL_NAMES[2]
         self.params = { 'n_estimators': [ 100, 200, 300 ],
                         'max_depth': [ 10, 20, 30 ],
                         'criterion': [ 'gini', 'entropy' ]
@@ -510,7 +535,7 @@ class RFC(Ensemble):
 class HGBC(Ensemble):
     def __init__(self) -> None:
         super().__init__()
-        self.name = "Histogram-based Gradient Boosting Classification Tree"
+        self.name = MODEL_NAMES[4]
         self.params = { 'max_iter': [ 100, 200, 300 ],
                         'max_depth': [ 10, 20, 30 ],
                         'learning_rate': [ 0.1, 0.01, 0.001 ]
@@ -609,6 +634,12 @@ class Arguments(argparse.ArgumentParser):
                           help = "Percentage of data to use for testing",
                           type = float,
                           default = 0.2)
+        
+        self.add_argument("-o",
+                          "--epochs",
+                          help = "Number of epochs to run",
+                          type = int,
+                          default = 25)
       
 ###############
 ###  AGENT  ###
@@ -738,9 +769,9 @@ class Agent:
         return data
     
     def _process_flags(self) -> None:
-        algorithms = [RNN, LSTMCNN, RFC, MNB, HGBC, SVC]
+        algorithms = [CNN, LSTMCNN, RFC, MNB, HGBC, SVC]
         if not parser.data['neuralnetworks']:
-            algorithms.remove(RNN)
+            algorithms.remove(CNN)
             algorithms.remove(LSTMCNN)
         if not parser.data['ensemble']:
             algorithms.remove(RFC)
@@ -755,7 +786,7 @@ class Agent:
             "X": data.X,
             "y": data.Y,
             "train_sizes": np.linspace(0.1, 1.0, 5),
-            "cv": ShuffleSplit(n_splits=CV, test_size=parser.data['testpercentage'], random_state=parser.data['seed']),
+            "cv": ShuffleSplit(n_splits = CV, test_size = parser.data['testpercentage'], random_state = parser.data['seed']),
             "n_jobs": -1,
             "line_kw": {"marker": "o"},
             "std_display_style": "fill_between",
@@ -763,7 +794,7 @@ class Agent:
 
         for scorer in LC_METRICS:
             for estimator in MODEL_CALLS:
-                fig, ax = plt.subplots(figsize=(8, 5))
+                fig, ax = plt.subplots(figsize = (8, 5))
                 LearningCurveDisplay.from_estimator(
                     estimator,
                     **common_params,
@@ -773,10 +804,10 @@ class Agent:
                 )
 
                 handles, label = ax.get_legend_handles_labels()
-                ax.legend(handles[:2], ["Training Score", "Test Score"], loc="lower right")
+                ax.legend(handles[:2], ["Training Score", "Test Score"], loc = "lower right")
                 ax.set_title(f"{scorer.title()} Learning Curve for {estimator.__class__.__name__}")
                 
-                file_path = f"./models/{self.uuid}/learningcurve-{estimator.__class__.__name__}-{scorer}.png"
+                file_path = f"./models/{self.uuid}/{estimator.__class__.__name__} - {scorer.title()} - Learning Curve.png"
                 plt.savefig(file_path)
                 plt.close(fig)
 
