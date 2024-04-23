@@ -369,9 +369,9 @@ class Ensemble(Model):
                xlabel = 'Predicted label')
         
         if best:
-            ax.set(title = 'Best Confusion Matrix')
+            ax.set(title = f'{self.name} Confusion Matrix - Best')
         else:
-            ax.set(title = 'Confusion Matrix')
+            ax.set(title = f'{self.name} Confusion Matrix')
 
         plt.setp(ax.get_xticklabels(), rotation = 45, ha = "right", rotation_mode = "anchor")
 
