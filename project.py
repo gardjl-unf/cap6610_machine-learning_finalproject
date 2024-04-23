@@ -58,7 +58,19 @@ tf.keras.utils.disable_interactive_logging()
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 LOG_FORMAT_testinput = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
-METRICS = ["f1_score", "accuracy_score", "precision_score", "recall_score", "confusion_matrix"]
+METRICS = ["f1_score", 
+           "accuracy_score", 
+           "precision_score", 
+           "recall_score", 
+           "confusion_matrix"]
+LC_METRICS = ["accuracy", "precision", "recall", "f1"]
+MODEL_NAMES = ["Recurrent Neural Network", 
+               "Convolutional Neural Network (LSTM)", 
+               "Random Forest", 
+               "Multinomial Naive Bayes", 
+               "HGBC", 
+               "SVC"]
+MODEL_CALLS = [rfcn(), mnb(), hgbc(), svc()]
 DEFAULT_METRIC = "f1_score"
 RMSPROP_CLIP = 10.0
 AVERAGE = "weighted"
@@ -251,7 +263,8 @@ class NN(Model):
         logger.info(f"Loaded model weights from './models/{self.uuid}/{self.name}-model.weights.h5'")
         
     def print(self) -> None:
-        logger.info(f"{self.name}:  Loss - {self.model_score[0]}, Test Data Accuracy - {self.model_score[1]}")
+        logger.info(f"{self.name}:  Accuracy - {self.model_score[1]}")
+        logger.info(f"{self.name}:  Loss - {self.model_score[0]}")
         
 class Ensemble(Model):
     def __init__(self) -> None:
@@ -302,11 +315,6 @@ class Ensemble(Model):
                                     "Best RMSE": [self.best_rmse]})
             metrics.to_csv(f"./models/{self.uuid}/{self.name}-best-metrics.csv")
             logger.info(f"Saved best metrics to './models/{self.uuid}/{self.name}-best-metrics.csv'")
-            
-            logger.info(f"Saving best confusion matrix to './models/{self.uuid}/{self.name}-best-confusion.png'")
-            plt.imshow(self.best_confusion, cmap = 'binary')
-            plt.savefig(f"./models/{self.uuid}/{self.name}-best-confusion.png")
-            logger.info(f"Saved best confusion matrix to './models/{self.uuid}/{self.name}-best-confusion.png'")
         else:
             logger.info(f"Saving metrics to './models/{self.uuid}/{self.name}-metrics.csv'")
             metrics = pd.DataFrame({"F1 Score": [self.f1],
@@ -316,9 +324,49 @@ class Ensemble(Model):
                                     "RMSE": [self.rmse]})
             metrics.to_csv(f"./models/{self.uuid}/{self.name}-metrics.csv")
             logger.info(f"Saved metrics to './models/{self.uuid}/{self.name}-metrics.csv'")
-            plt.imshow(self.confusion, cmap = 'binary')
-            plt.savefig(f"./models/{self.uuid}/{self.name}-confusion.png")
-            logger.info(f"Saved confusion matrix to './models/{self.uuid}/{self.name}-confusion.png'")
+        self.confusion_matrix(best)
+            
+    def confusion_matrix(self, best: bool = False) -> None:
+        if best:
+            cm = self.best_confusion
+        else:
+            cm = self.confusion
+        class_names = ['Negative', 'Positive']
+        fig, ax = plt.subplots(figsize=(8, 6))
+        cmap = plt.get_cmap('Blues')
+
+        im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
+
+        cbar = ax.figure.colorbar(im, ax=ax)
+        cbar.ax.set_ylabel('Counts', rotation=-90, va="bottom")
+
+        ax.set(xticks=np.arange(cm.shape[1]),
+            yticks=np.arange(cm.shape[0]),
+            xticklabels=class_names, yticklabels=class_names,
+            title='Confusion Matrix',
+            ylabel='True label',
+            xlabel='Predicted label')
+
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+        fmt = 'd'
+        thresh = cm.max() / 2.
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, format(cm[i, j], fmt),
+                        ha="center", va="center",
+                        color="white" if cm[i, j] > thresh else "black")
+
+        fig.tight_layout()
+
+        if best:
+            filename = f"./models/{self.uuid}/{self.name}-best-confusion.png"
+        else:
+            filename = f"./models/{self.uuid}/{self.name}-confusion.png"
+
+        plt.savefig(filename)
+        plt.close(fig)
+        logger.info(f"Saved best confusion matrix to '{filename}'")
         
     def save(self) -> None:
         logger.info(f"Saving model to './models/{self.uuid}/{self.name}-model.pkl'")
@@ -628,7 +676,7 @@ class Agent:
             exit(1)
         logger.info(f"Running models on input text")
         
-        logger.info(f"Processing input testinput: {self.testinput}")
+        logger.info(f"Processing input test input: '{self.testinput}'")
         self.testinput = self._remove_punctuation(self.testinput)
         self.testinput = self._tokenize(self.testinput)
         self.testinput = self._pad_sequences(self.testinput)
@@ -711,8 +759,8 @@ class Agent:
             "std_display_style": "fill_between",
         }
 
-        for scorer in ["accuracy", "precision", "recall"]:
-            for estimator in [mnb(), hgbc(), rfcn(), svc()]:
+        for scorer in LC_METRICS:
+            for estimator in MODEL_CALLS:
                 fig, ax = plt.subplots(figsize=(8, 5))
                 LearningCurveDisplay.from_estimator(
                     estimator,
