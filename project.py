@@ -24,7 +24,7 @@ import logging
 import os
 import sys
 import json
-import uuid
+#import uuid
 import pickle
 import string
 import time
@@ -51,6 +51,9 @@ from sklearn.metrics import confusion_matrix as confusion
 from matplotlib import pyplot as plt
 import re
 import warnings
+from colorama import init as colorama_init
+from colorama import Fore
+from colorama import Style
 
 if not sys.warnoptions:
     warnings.simplefilter("ignore")
@@ -388,7 +391,7 @@ class Ensemble(Model):
         if best:
             filename = f"./models/{self.uuid}/{self.name} - Confusion Matrix - Best.png"
         else:
-            filename = f"./models/{self.uuid}/{self.name} - Confusion Matrix"
+            filename = f"./models/{self.uuid}/{self.name} - Confusion Matrix.png"
 
         plt.savefig(filename)
         plt.close(fig)
@@ -725,14 +728,15 @@ class Agent:
             else:
                 predictions.append(model_prediction[0])
                 
-            logger.info(f'Prediction from {model.name}: {"Positive" if predictions[-1] > 0.5 else "Negative"}')
+            logger.info(f'Prediction from {model.name}: {Fore.GREEN + "Positive" + Style.RESET_ALL if predictions[-1] > 0.5 else Fore.RED + "Negative" + Style.RESET_ALL}')
+
             
         for model in self.models:
             if isinstance(model, Ensemble) and model.best_model is not None:
                 model_prediction = model.model.predict(np.array([self.testinput]))
                 predictions.append(model_prediction[0])
                     
-                logger.info(f'Prediction from Best {model.name}: {"Positive" if predictions[-1] > 0.5 else "Negative"}')
+                logger.info(f'Prediction from Best {model.name}: {Fore.GREEN + "Positive" + Style.RESET_ALL if predictions[-1] > 0.5 else Fore.RED + "Negative" + Style.RESET_ALL}')
 
         binary_outcomes = [1 if pred > 0.5 else 0 for pred in predictions]
 
@@ -742,7 +746,7 @@ class Agent:
         except:
             final_prediction = 1 if sum(binary_outcomes) >= len(binary_outcomes) / 2 else 0
 
-        logger.info(f'Final prediction after majority voting: {"Positive" if final_prediction == 1 else "Negative"}')
+        logger.info(f'Final prediction after majority voting: {Fore.GREEN + "Positive" + Style.RESET_ALL if final_prediction == 1 else Fore.RED + "Negative" + Style.RESET_ALL}')
 
         return final_prediction
     
