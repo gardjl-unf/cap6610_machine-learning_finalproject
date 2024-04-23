@@ -13,6 +13,7 @@ TODO: Make early cancellation optional for networks, as they might be stopping e
 TODO: Output information about network training. DONE
 TODO: Run input string against "best" versions of networks coming from the grid searches. DONE
 TODO: Whatever Conor wanted to do with the raw CSV data.
+TODO: Add model names to confusion matrices.
 TODO: Color code.
 '''
 
