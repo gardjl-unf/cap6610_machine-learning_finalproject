@@ -625,7 +625,8 @@ class Agent:
     def init_agent(self) -> None:
         if parser.data['uuid'] is None:
             logger.info(f"No UUID provided. Generating new UUID:")
-            self.uuid = uuid.uuid4().hex
+            #self.uuid = uuid.uuid4().hex
+            self.uuid = time.strftime("%Y-%m-%d-%H%M%S")
             parser.data['uuid'] = self.uuid
             logger.info(f"New UUID: {self.uuid}")
             self.save()
