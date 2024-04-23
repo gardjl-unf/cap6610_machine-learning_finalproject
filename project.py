@@ -1,12 +1,19 @@
 #!/usr/bin/env python
 
-__author__ = ["Jason Gardner", "Tamar Dexheimer", "Conor Nolan"]
-__credits__ = ["Jason Gardner", "Tamar Dexheimer", "Conor Nolan"]
+__author__ = ["Jason Gardner", "Tamar Dexheimer", "Conor Nolan", "Jacob Tanchak"]
+__credits__ = ["Jason Gardner", "Tamar Dexheimer", "Conor Nolan", "Jacob Tanchak"]
 __license__ = "GPL"
-__version__ = "0.0.1"
-__maintainer__ = ["Jason Gardner", "Tamar Dexheimer", "Conor Nolan"]
+__version__ = "0.1.5"
+__maintainer__ = ["Jason Gardner", "Tamar Dexheimer", "Conor Nolan", "Jacob Tanchak"]
 __email__ = ["n01480000@unf.edu"]
 __status__ = "Development"
+
+'''
+TODO: Make early cancellation optional for networks, as they might be stopping early when improvement is still possible. DONE
+TODO: Output information about network training. DONE
+TODO: Run input string against "best" versions of networks coming from the grid searches.
+TODO: Whatever Conor wanted to do with the raw CSV data.
+'''
 
 import numpy as np
 import pandas as pd
@@ -28,11 +35,19 @@ from tensorflow.keras import callbacks
 from sklearn.naive_bayes import MultinomialNB as mnb
 from sklearn.ensemble import HistGradientBoostingClassifier as hgbc
 from sklearn.ensemble import RandomForestClassifier as rfcn
+from sklearn.svm import SVC as svc
 from sklearn.model_selection import GridSearchCV as gridsearch
+from sklearn.model_selection import LearningCurveDisplay, ShuffleSplit
 # https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics
-from sklearn.metrics import f1_score #, accuracy_score, precision_score, recall_score, confusion_matrix
+from sklearn.metrics import f1_score as f1
+from sklearn.metrics import accuracy_score as accuracy
+from sklearn.metrics import precision_score as precision
+from sklearn.metrics import recall_score as recall
+from sklearn.metrics import mean_squared_error as mse
+from sklearn.metrics import confusion_matrix as confusion
+from matplotlib import pyplot as plt
 import re
-import sys, os, warnings
+import warnings
 
 if not sys.warnoptions:
     warnings.simplefilter("ignore")
@@ -43,6 +58,8 @@ tf.keras.utils.disable_interactive_logging()
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 LOG_FORMAT_testinput = logging.Formatter("%(asctime)s — %(name)s — %(funcName)s:%(lineno)d — %(message)s")
+METRICS = ["f1_score", "accuracy_score", "precision_score", "recall_score", "confusion_matrix"]
+DEFAULT_METRIC = "f1_score"
 RMSPROP_CLIP = 10.0
 AVERAGE = "weighted"
 METRICS = "accuracy"
@@ -62,10 +79,13 @@ class Data:
         self.test = test
         self.x_train, self.y_train, self.x_test, self.y_test = self._load_data()
         if parser.data['test'] == True:
+            logger.info("Test mode enabled. Using subset of data.")
             self.x_train = self.x_train[10:20]
             self.y_train = self.y_train[10:20]
             self.x_test = self.x_test[10:20]
             self.y_test = self.y_test[10:20]
+        self.X = np.concatenate((self.x_train, self.x_test), axis = 0)
+        self.Y = np.concatenate((self.y_train, self.y_test), axis = 0)
         
     def _load_data(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         logger.info("Loading data from keras.datasets.imdb.load_data()")
@@ -148,6 +168,18 @@ class Model:
         self.y_test = data.y_test
         self.predictions = None
         self.model_score = None
+        self.f1 = None
+        self.accuracy = None
+        self.precision = None
+        self.recall = None
+        self.confusion = None
+        self.rmse = None
+        self.best_f1 = None
+        self.best_accuracy = None
+        self.best_precision = None
+        self.best_recall = None
+        self.best_confusion = None
+        self.best_rmse = None
         
     def fit(self) -> None:
         self.model.fit(self.x_train, self.y_train)
@@ -166,18 +198,28 @@ class NN(Model):
         self.optimizer = None
         self.loss_function = None
         self.vocab_size = len(imdb.get_word_index()) + 1
+        self.history = None
         
     def fit(self) -> None:
         earlystopping = callbacks.EarlyStopping(monitor = "val_loss",
                                         mode = "min",
                                         patience = 5,
                                         restore_best_weights = True)
-        self.model.fit(self.x_train, 
-                       self.y_train, 
-                       batch_size = BATCH_SIZE, 
-                       epochs = EPOCHS, 
-                       validation_data = (self.x_test, self.y_test),
-                       callbacks = [earlystopping])
+        if parser.data['cancelearly']:
+            history = self.model.fit(self.x_train, 
+                                          self.y_train, 
+                                          batch_size = BATCH_SIZE, 
+                                          epochs = EPOCHS, 
+                                          validation_data = (self.x_test, self.y_test),
+                                          callbacks = [earlystopping])
+        else:
+            history = self.model.fit(self.x_train, 
+                                          self.y_train, 
+                                          batch_size = BATCH_SIZE, 
+                                          epochs = EPOCHS, 
+                                          validation_data = (self.x_test, self.y_test))
+            
+        self.history = pd.DataFrame(history.history)
         
     def optimize(self) -> None:
         self.optimizer = tf.keras.optimizers.RMSprop(clipvalue = RMSPROP_CLIP)
@@ -193,6 +235,11 @@ class NN(Model):
         logger.info(f"Saving model to './models/{self.uuid}/{self.name}-model.weights.h5'")
         self.model.save_weights(f'./models/{self.uuid}/{self.name}-model.weights.h5')
         logger.info(f"Saved model weights to './models/{self.uuid}/{self.name}-model.weights.h5'")
+    
+    def save_metrics(self) -> None:
+        hist_csv_file = f"./models/{self.uuid}/{self.name}-training.csv"
+        with open(hist_csv_file, mode='w') as f:
+            self.history.to_csv(f)
         
     def load(self) -> None:
         self.init_model()
@@ -214,9 +261,6 @@ class Ensemble(Model):
         self.best_model = None
         self.model_best_score = None
         
-    def score(self) -> None:
-        self.model_score = f1_score(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
-        
     def search(self) -> dict:
         return gridsearch(self.model, 
                           self.params, 
@@ -232,16 +276,49 @@ class Ensemble(Model):
     def best_predict(self) -> None:
         self.best_predictions = self.best_model.predict(self.x_test)
         
-    def best_score(self) -> None:
-        self.model_best_score = f1_score(self.y_test, self.best_predictions, average= AVERAGE, labels = np.unique(self.best_predictions))
+    def score(self) -> None:
+        self.f1 = f1(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
+        self.accuracy = accuracy(self.y_test, self.predictions)    
+        self.precision = precision(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))   
+        self.recall = recall(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
+        self.confusion = confusion(self.y_test, self.predictions)
+        self.rmse = mse(self.y_test, self.predictions, squared=False)
         
-    def print(self, best : bool = False) -> None:
+    def best_score(self) -> None:
+            self.best_f1 = f1(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
+            self.best_accuracy = accuracy(self.y_test, self.best_predictions)
+            self.best_precision = precision(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
+            self.best_recall = recall(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
+            self.best_confusion = confusion(self.y_test, self.best_predictions)
+            self.best_rmse = mse(self.y_test, self.best_predictions, squared=False)
+            
+    def save_metrics(self, best: bool = False) -> None:
         if best:
-            print(f"Best {self.name} F1 Score: {self.model_best_score}")
-            print(f"Best {self.name} Parameters: {self.best_params}")
+            logger.info(f"Saving best metrics to './models/{self.uuid}/{self.name}-best-metrics.csv'")
+            metrics = pd.DataFrame({"Best F1 Score": [self.best_f1],
+                                    "BestAccuracy": [self.best_accuracy],
+                                    "Best Precision": [self.best_precision],
+                                    "Best Recall": [self.best_recall],
+                                    "Best RMSE": [self.best_rmse]})
+            metrics.to_csv(f"./models/{self.uuid}/{self.name}-best-metrics.csv")
+            logger.info(f"Saved best metrics to './models/{self.uuid}/{self.name}-best-metrics.csv'")
+            
+            logger.info(f"Saving best confusion matrix to './models/{self.uuid}/{self.name}-best-confusion.png'")
+            plt.imshow(self.best_confusion, cmap = 'binary')
+            plt.savefig(f"./models/{self.uuid}/{self.name}-best-confusion.png")
+            logger.info(f"Saved best confusion matrix to './models/{self.uuid}/{self.name}-best-confusion.png'")
         else:
-            print(f"{self.name} F1 Score: {self.model_score}")
-            print(f"{self.name} Parameters: {self.params}")
+            logger.info(f"Saving metrics to './models/{self.uuid}/{self.name}-metrics.csv'")
+            metrics = pd.DataFrame({"F1 Score": [self.f1],
+                                    "Accuracy": [self.accuracy],
+                                    "Precision": [self.precision],
+                                    "Recall": [self.recall],
+                                    "RMSE": [self.rmse]})
+            metrics.to_csv(f"./models/{self.uuid}/{self.name}-metrics.csv")
+            logger.info(f"Saved metrics to './models/{self.uuid}/{self.name}-metrics.csv'")
+            plt.imshow(self.confusion, cmap = 'binary')
+            plt.savefig(f"./models/{self.uuid}/{self.name}-confusion.png")
+            logger.info(f"Saved confusion matrix to './models/{self.uuid}/{self.name}-confusion.png'")
         
     def save(self) -> None:
         logger.info(f"Saving model to './models/{self.uuid}/{self.name}-model.pkl'")
@@ -272,6 +349,19 @@ class Ensemble(Model):
             self.best_params = json.load(f)
         logger.info(f"Loaded best params from './models/{self.uuid}/{self.name}-best-params.json'")
     
+    def print(self, best: bool = False) -> None:
+        if best:
+            logger.info(f"{self.name} F1 Score: {self.best_f1}")
+            logger.info(f"{self.name} Accuracy: {self.best_accuracy}")
+            logger.info(f"{self.name} Precision: {self.best_precision}")
+            logger.info(f"{self.name} Recall: {self.best_recall}")
+            logger.info(f"{self.name} RMSE: {self.best_rmse}")
+        else:
+            logger.info(f"{self.name} Best F1 Score: {self.f1}")
+            logger.info(f"{self.name} Best Accuracy: {self.accuracy}")
+            logger.info(f"{self.name} Best Precision: {self.precision}")
+            logger.info(f"{self.name} Best Recall: {self.recall}")
+            logger.info(f"{self.name} Best RMSE: {self.rmse}")
 class RNN(NN):
     def __init__(self) -> None:
         super().__init__()
@@ -308,6 +398,29 @@ class LSTMCNN(NN):
                                 Dense(32),
                                 Dense(1, activation = 'sigmoid')])
         logger.info(f"Model {self.name} initialized")
+        
+class SVC(Ensemble):
+    def __init__(self) -> None:
+        super().__init__()
+        self.name = "Support Vector Classifier"
+        self.params = { 'C': [ 1.0, 0.5, 0.1 ],
+                        'kernel': [ 'linear', 'poly', 'rbf', 'sigmoid' ],
+                        'gamma': [ 'scale', 'auto' ]
+                      }
+        
+    def init_model(self) -> None:
+        self.model = svc(C = self.params['C'][0],
+                         kernel = self.params['kernel'][0],
+                         gamma = self.params['gamma'][0])
+        
+    def grid_search(self) -> None:
+        self.best_params = self.search().best_params_
+        
+    def best_fit(self) -> None:
+        self.best_model = svc(C = self.best_params['C'],
+                             kernel = self.best_params['kernel'],
+                             gamma = self.best_params['gamma'])
+        self.best_model.fit(self.x_train, self.y_train)
     
 class MNB(Ensemble):
     def __init__(self) -> None:
@@ -435,6 +548,18 @@ class Arguments(argparse.ArgumentParser):
                           help = "Test string to categorize",
                           type = str,
                           default = None)
+        
+        self.add_argument("-c",
+                          "--cancelearly",
+                          help = "Enable early cancellation",
+                          action = "store_true",
+                          default = False)
+        
+        self.add_argument("-p",
+                          "--testpercentage",
+                          help = "Percentage of data to use for testing",
+                          type = float,
+                          default = 0.2)
       
 ###############
 ###  AGENT  ###
@@ -454,6 +579,9 @@ class Agent:
             self.uuid = uuid.uuid4().hex
             parser.data['uuid'] = self.uuid
             logger.info(f"New UUID: {self.uuid}")
+            self.save()
+            logger.info(f"Logging to './models/{self.uuid}/log.txt'")
+            self._add_log_to_file(f"./models/{self.uuid}/log.txt")
         else:
             logger.info(f"Loading data for UUID: {self.uuid}")
             self.load()
@@ -471,7 +599,6 @@ class Agent:
             self._create_models()
                 
     def _create_models(self) -> None:
-        self.save()
         for algorithm in self.algorithms:
             model = algorithm()
             model.init_model()
@@ -481,13 +608,17 @@ class Agent:
             model.predict()
             model.score()
             model.print()
+            model.save_metrics()
             if isinstance(model, Ensemble):
                 model.grid_search()
                 model.best_fit()
                 model.best_predict()
                 model.best_score()
                 model.print(best = True)
+                model.save_metrics(best = True)
+            self.models.append(model)
             model.save()
+        self.learning_curves()
             
     def _run_models(self) -> None:
         if self.testinput is None:
@@ -506,6 +637,13 @@ class Agent:
                 predictions.append(model_prediction[0])
                 
             logger.info(f'Prediction from {model.name}: {"Positive" if predictions[-1] > 0.5 else "Negative"}')
+            
+        for model in self.models:
+            if isinstance(model, Ensemble) and model.best_model is not None:
+                model_prediction = model.model.predict(np.array([self.testinput]))
+                predictions.append(model_prediction[0])
+                    
+                logger.info(f'Prediction from Best {model.name}: {"Positive" if predictions[-1] > 0.5 else "Negative"}')
 
         binary_outcomes = [1 if pred > 0.5 else 0 for pred in predictions]
 
@@ -520,7 +658,7 @@ class Agent:
         return final_prediction
     
     def _process_flags(self) -> None:
-        algorithms = [RNN, LSTMCNN, RFC, MNB, HGBC]
+        algorithms = [RNN, LSTMCNN, RFC, MNB, HGBC, SVC]
         if not parser.data['neuralnetworks']:
             algorithms.remove(RNN)
             algorithms.remove(LSTMCNN)
@@ -528,8 +666,48 @@ class Agent:
             algorithms.remove(RFC)
             algorithms.remove(MNB)
             algorithms.remove(HGBC)
+            algorithms.remove(SVC)
             
         return algorithms
+    
+    def learning_curves(self) -> None:
+        fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(10, 6), sharey=True)
+
+        common_params = {
+            "X": data.X,
+            "y": data.Y,
+            "train_sizes": np.linspace(0.1, 1.0, 5),
+            "cv": ShuffleSplit(n_splits = CV, test_size = parser.data['testpercentage'], random_state = parser.data['seed']),
+            "n_jobs": -1,
+            "line_kw": {"marker": "o"},
+            "std_display_style": "fill_between",
+        }
+
+        # For each model in self.models, plot learning curves for each scorer
+        models = [model.model for model in self.models]
+        logger.info(f"Plotting learning curves for {len(models)} models")
+        logger.info(f"{models}")
+        
+        for scorer in ["accuracy", "precision", "recall", "f1"]:
+            for i in range(0, len(models), 3):
+                j = 0
+                if len(models) - i >= 3:
+                    for ax_idx, estimator in enumerate([models[i:i+2]]):
+                        LearningCurveDisplay.from_estimator(estimator, **common_params, score_name = scorer.title(), scoring = scorer, ax = ax[ax_idx])
+                        handles, label = ax[ax_idx].get_legend_handles_labels()
+                        ax[ax_idx].legend(handles[:3], ["Training Score", "Test Score"], loc = "lower right")
+                        ax[ax_idx].set_title(f"Learning Curve for {estimator.__class__.__name__}")
+                    logger.info(f"Saving learning curves to './models/{self.uuid}/{j}-learningcurves-{scorer}.png")
+                    plt.savefig(f"./models/j-{self.uuid}/{j}-learningcurves-{scorer}.png")
+                else:
+                    for ax_idx, estimator in enumerate([models[i:]]):
+                        LearningCurveDisplay.from_estimator(estimator, **common_params, score_name = scorer.title(), scoring = scorer, ax = ax[ax_idx])
+                        handles, label = ax[ax_idx].get_legend_handles_labels()
+                        ax[ax_idx].legend(handles[:3], ["Training Score", "Test Score"], loc = "lower right")
+                        ax[ax_idx].set_title(f"Learning Curve for {estimator.__class__.__name__}")
+                    logger.info(f"Saving learning curves to './models/{self.uuid}/{j}-learningcurves-{scorer}.png")
+                    plt.savefig(f"./models/{self.uuid}/{j}-learningcurves-{scorer}.png")
+                j += 1
             
     def save(self) -> None:
         logger.info(f"Saving data to './models/{self.uuid}/'")
@@ -578,7 +756,12 @@ class Agent:
             with open(f'./models/{self.uuid}/state.json', 'r') as f:
                 logger.info(f"Loading state from './models/{self.uuid}/state.json'")
                 parser.data = json.load(f)
-                logger.info(f"Loaded state from './models/{self.uuid}/state.json'")
+                logger.info(f"Loaded state from './models/{self.uuid}/state.json'")  
+                
+    def _add_log_to_file(self, file_path: str) -> None:
+        file_handler = logging.FileHandler(file_path)
+        file_handler.setFormatter(LOG_FORMAT_testinput)
+        logger.addHandler(file_handler)
                 
 ##########################
 ###  ARGUMENT PARSING  ###
