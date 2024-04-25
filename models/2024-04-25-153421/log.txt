@@ -1,0 +1,141 @@
+2024-04-25 15:34:21,746 — __main__ — init_agent:698 — Agent initialized with ID: 2024-04-25-153421
+2024-04-25 15:34:21,777 — __main__ — init_model:468 — Initializing Convolutional Neural Network model
+2024-04-25 15:34:21,781 — __main__ — init_model:478 — Model Convolutional Neural Network initialized
+2024-04-25 15:45:11,200 — __main__ — _create_models:714 — Training Convolutional Neural Network model took 649.3960926532745 seconds
+2024-04-25 15:45:19,312 — __main__ — print:295 — Convolutional Neural Network:  Accuracy - 0.5
+2024-04-25 15:45:19,313 — __main__ — print:296 — Convolutional Neural Network:  Loss - 0.12500150501728058
+2024-04-25 15:45:19,749 — __main__ — save:254 — Saving model to './models/2024-04-25-153421/Convolutional Neural Network - Model.weights.h5'
+2024-04-25 15:45:19,834 — __main__ — save:256 — Saved model weights to './models/2024-04-25-153421/Convolutional Neural Network - Model.weights.h5'
+2024-04-25 15:45:19,865 — __main__ — init_model:486 — Initializing Convolutional Neural Network (LSTM) model
+2024-04-25 15:45:19,874 — __main__ — init_model:497 — Model Convolutional Neural Network (LSTM) initialized
+2024-04-25 15:56:32,387 — __main__ — _create_models:714 — Training Convolutional Neural Network (LSTM) model took 672.5107517242432 seconds
+2024-04-25 15:56:41,326 — __main__ — print:295 — Convolutional Neural Network (LSTM):  Accuracy - 0.8709200024604797
+2024-04-25 15:56:41,326 — __main__ — print:296 — Convolutional Neural Network (LSTM):  Loss - 0.05975915491580963
+2024-04-25 15:56:41,564 — __main__ — save:254 — Saving model to './models/2024-04-25-153421/Convolutional Neural Network (LSTM) - Model.weights.h5'
+2024-04-25 15:56:41,640 — __main__ — save:256 — Saved model weights to './models/2024-04-25-153421/Convolutional Neural Network (LSTM) - Model.weights.h5'
+2024-04-25 15:56:54,126 — __main__ — _create_models:714 — Training Random Forest model took 12.484013557434082 seconds
+2024-04-25 15:56:54,338 — __main__ — score:322 — Scoring Random Forest model
+2024-04-25 15:56:54,338 — __main__ — score:323 — F1 Score for Random Forest model
+2024-04-25 15:56:54,343 — __main__ — score:325 — Accuracy Score for Random Forest model
+2024-04-25 15:56:54,345 — __main__ — score:327 — Precision Score for Random Forest model
+2024-04-25 15:56:54,351 — __main__ — score:329 — Recall Score for Random Forest model
+2024-04-25 15:56:54,358 — __main__ — score:331 — RMSE for Random Forest model
+2024-04-25 15:56:54,359 — __main__ — score:333 — Confusion Matrix for Random Forest model
+2024-04-25 15:56:54,362 — __main__ — print:456 — Random Forest Best F1 Score: 0.5308723642725304
+2024-04-25 15:56:54,362 — __main__ — print:457 — Random Forest Best Accuracy: 0.53748
+2024-04-25 15:56:54,363 — __main__ — print:458 — Random Forest Best Precision: 0.5397176852351963
+2024-04-25 15:56:54,363 — __main__ — print:459 — Random Forest Best Recall: 0.53748
+2024-04-25 15:56:54,363 — __main__ — print:460 — Random Forest Best RMSE: 0.6800882295702522
+2024-04-25 15:56:54,363 — __main__ — save_metrics:363 — Saving metrics to './models/2024-04-25-153421/Random Forest - Metrics.csv'
+2024-04-25 15:56:54,365 — __main__ — save_metrics:370 — Saved metrics to './models/2024-04-25-153421/Random Forest - Metrics.csv'
+2024-04-25 15:56:54,530 — __main__ — confusion_matrix:417 — Saved best confusion matrix to './models/2024-04-25-153421/Random Forest - Confusion Matrix.png'
+2024-04-25 16:11:18,346 — __main__ — _create_models:723 — Training Random Forest model took 78.51136660575867 seconds
+2024-04-25 16:11:19,164 — __main__ — best_score:337 — Scoring best Random Forest model
+2024-04-25 16:11:19,165 — __main__ — best_score:338 — F1 Score for best Random Forest model
+2024-04-25 16:11:19,170 — __main__ — best_score:340 — Accuracy Score for best Random Forest model
+2024-04-25 16:11:19,173 — __main__ — best_score:342 — Precision Score for best Random Forest model
+2024-04-25 16:11:19,179 — __main__ — best_score:344 — Recall Score for best Random Forest model
+2024-04-25 16:11:19,185 — __main__ — best_score:346 — RMSE for best Random Forest model
+2024-04-25 16:11:19,186 — __main__ — best_score:348 — Confusion Matrix for best Random Forest model
+2024-04-25 16:11:19,189 — __main__ — print:450 — Random Forest F1 Score: 0.5405489756901499
+2024-04-25 16:11:19,189 — __main__ — print:451 — Random Forest Accuracy: 0.54472
+2024-04-25 16:11:19,189 — __main__ — print:452 — Random Forest Precision: 0.5464051141829462
+2024-04-25 16:11:19,189 — __main__ — print:453 — Random Forest Recall: 0.54472
+2024-04-25 16:11:19,189 — __main__ — print:454 — Random Forest RMSE: 0.6747443960493484
+2024-04-25 16:11:19,190 — __main__ — save_metrics:354 — Saving best metrics to './models/2024-04-25-153421/Random Forest - Metrics - Best.csv'
+2024-04-25 16:11:19,191 — __main__ — save_metrics:361 — Saved best metrics to './models/2024-04-25-153421/Random Forest - Metrics - Best.csv'
+2024-04-25 16:11:19,354 — __main__ — confusion_matrix:417 — Saved best confusion matrix to './models/2024-04-25-153421/Random Forest - Confusion Matrix - Best.png'
+2024-04-25 16:11:19,354 — __main__ — save:420 — Saving model to './models/2024-04-25-153421/Random Forest - Model.pkl'
+2024-04-25 16:11:19,361 — __main__ — save:423 — Saved model to './models/2024-04-25-153421/Random Forest - Model.pkl'
+2024-04-25 16:11:19,361 — __main__ — save:424 — Saving best model to './models/2024-04-25-153421/Random Forest - Model - Best.pkl'
+2024-04-25 16:11:19,443 — __main__ — save:427 — Saved best model to './models/2024-04-25-153421/Random Forest - Model - Best.pkl'
+2024-04-25 16:11:19,443 — __main__ — save:428 — Saving best params to './models/2024-04-25-153421/Random Forest - Parameters - Best.json'
+2024-04-25 16:11:19,444 — __main__ — save:431 — Saved best params to './models/2024-04-25-153421/Random Forest - Parameters - Best.json'
+2024-04-25 16:11:19,507 — __main__ — _create_models:714 — Training Multinomial Naive Bayes model took 0.06269240379333496 seconds
+2024-04-25 16:11:19,523 — __main__ — score:322 — Scoring Multinomial Naive Bayes model
+2024-04-25 16:11:19,523 — __main__ — score:323 — F1 Score for Multinomial Naive Bayes model
+2024-04-25 16:11:19,530 — __main__ — score:325 — Accuracy Score for Multinomial Naive Bayes model
+2024-04-25 16:11:19,532 — __main__ — score:327 — Precision Score for Multinomial Naive Bayes model
+2024-04-25 16:11:19,538 — __main__ — score:329 — Recall Score for Multinomial Naive Bayes model
+2024-04-25 16:11:19,544 — __main__ — score:331 — RMSE for Multinomial Naive Bayes model
+2024-04-25 16:11:19,546 — __main__ — score:333 — Confusion Matrix for Multinomial Naive Bayes model
+2024-04-25 16:11:19,548 — __main__ — print:456 — Multinomial Naive Bayes Best F1 Score: 0.49958232406234615
+2024-04-25 16:11:19,549 — __main__ — print:457 — Multinomial Naive Bayes Best Accuracy: 0.50312
+2024-04-25 16:11:19,549 — __main__ — print:458 — Multinomial Naive Bayes Best Precision: 0.5032107941485381
+2024-04-25 16:11:19,549 — __main__ — print:459 — Multinomial Naive Bayes Best Recall: 0.50312
+2024-04-25 16:11:19,549 — __main__ — print:460 — Multinomial Naive Bayes Best RMSE: 0.7048971556191725
+2024-04-25 16:11:19,550 — __main__ — save_metrics:363 — Saving metrics to './models/2024-04-25-153421/Multinomial Naive Bayes - Metrics.csv'
+2024-04-25 16:11:19,551 — __main__ — save_metrics:370 — Saved metrics to './models/2024-04-25-153421/Multinomial Naive Bayes - Metrics.csv'
+2024-04-25 16:11:19,711 — __main__ — confusion_matrix:417 — Saved best confusion matrix to './models/2024-04-25-153421/Multinomial Naive Bayes - Confusion Matrix.png'
+2024-04-25 16:11:20,860 — __main__ — _create_models:723 — Training Multinomial Naive Bayes model took 0.04700493812561035 seconds
+2024-04-25 16:11:20,874 — __main__ — best_score:337 — Scoring best Multinomial Naive Bayes model
+2024-04-25 16:11:20,874 — __main__ — best_score:338 — F1 Score for best Multinomial Naive Bayes model
+2024-04-25 16:11:20,880 — __main__ — best_score:340 — Accuracy Score for best Multinomial Naive Bayes model
+2024-04-25 16:11:20,882 — __main__ — best_score:342 — Precision Score for best Multinomial Naive Bayes model
+2024-04-25 16:11:20,888 — __main__ — best_score:344 — Recall Score for best Multinomial Naive Bayes model
+2024-04-25 16:11:20,895 — __main__ — best_score:346 — RMSE for best Multinomial Naive Bayes model
+2024-04-25 16:11:20,896 — __main__ — best_score:348 — Confusion Matrix for best Multinomial Naive Bayes model
+2024-04-25 16:11:20,899 — __main__ — print:450 — Multinomial Naive Bayes F1 Score: 0.49958232406234615
+2024-04-25 16:11:20,899 — __main__ — print:451 — Multinomial Naive Bayes Accuracy: 0.50312
+2024-04-25 16:11:20,899 — __main__ — print:452 — Multinomial Naive Bayes Precision: 0.5032107941485381
+2024-04-25 16:11:20,900 — __main__ — print:453 — Multinomial Naive Bayes Recall: 0.50312
+2024-04-25 16:11:20,900 — __main__ — print:454 — Multinomial Naive Bayes RMSE: 0.7048971556191725
+2024-04-25 16:11:20,900 — __main__ — save_metrics:354 — Saving best metrics to './models/2024-04-25-153421/Multinomial Naive Bayes - Metrics - Best.csv'
+2024-04-25 16:11:20,902 — __main__ — save_metrics:361 — Saved best metrics to './models/2024-04-25-153421/Multinomial Naive Bayes - Metrics - Best.csv'
+2024-04-25 16:11:21,070 — __main__ — confusion_matrix:417 — Saved best confusion matrix to './models/2024-04-25-153421/Multinomial Naive Bayes - Confusion Matrix - Best.png'
+2024-04-25 16:11:21,070 — __main__ — save:420 — Saving model to './models/2024-04-25-153421/Multinomial Naive Bayes - Model.pkl'
+2024-04-25 16:11:21,072 — __main__ — save:423 — Saved model to './models/2024-04-25-153421/Multinomial Naive Bayes - Model.pkl'
+2024-04-25 16:11:21,072 — __main__ — save:424 — Saving best model to './models/2024-04-25-153421/Multinomial Naive Bayes - Model - Best.pkl'
+2024-04-25 16:11:21,072 — __main__ — save:427 — Saved best model to './models/2024-04-25-153421/Multinomial Naive Bayes - Model - Best.pkl'
+2024-04-25 16:11:21,073 — __main__ — save:428 — Saving best params to './models/2024-04-25-153421/Multinomial Naive Bayes - Parameters - Best.json'
+2024-04-25 16:11:21,073 — __main__ — save:431 — Saved best params to './models/2024-04-25-153421/Multinomial Naive Bayes - Parameters - Best.json'
+2024-04-25 16:11:22,261 — __main__ — _create_models:714 — Training Histogram-based Gradient Boosting Classification Tree model took 1.188032627105713 seconds
+2024-04-25 16:11:22,330 — __main__ — score:322 — Scoring Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:11:22,331 — __main__ — score:323 — F1 Score for Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:11:22,339 — __main__ — score:325 — Accuracy Score for Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:11:22,342 — __main__ — score:327 — Precision Score for Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:11:22,350 — __main__ — score:329 — Recall Score for Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:11:22,359 — __main__ — score:331 — RMSE for Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:11:22,359 — __main__ — score:333 — Confusion Matrix for Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:11:22,363 — __main__ — print:456 — Histogram-based Gradient Boosting Classification Tree Best F1 Score: 0.5434482463912417
+2024-04-25 16:11:22,363 — __main__ — print:457 — Histogram-based Gradient Boosting Classification Tree Best Accuracy: 0.54396
+2024-04-25 16:11:22,363 — __main__ — print:458 — Histogram-based Gradient Boosting Classification Tree Best Precision: 0.5441579885946353
+2024-04-25 16:11:22,363 — __main__ — print:459 — Histogram-based Gradient Boosting Classification Tree Best Recall: 0.54396
+2024-04-25 16:11:22,364 — __main__ — print:460 — Histogram-based Gradient Boosting Classification Tree Best RMSE: 0.6753073374397763
+2024-04-25 16:11:22,364 — __main__ — save_metrics:363 — Saving metrics to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Metrics.csv'
+2024-04-25 16:11:22,365 — __main__ — save_metrics:370 — Saved metrics to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Metrics.csv'
+2024-04-25 16:11:22,517 — __main__ — confusion_matrix:417 — Saved best confusion matrix to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Confusion Matrix.png'
+2024-04-25 16:18:22,158 — __main__ — _create_models:723 — Training Histogram-based Gradient Boosting Classification Tree model took 4.026013374328613 seconds
+2024-04-25 16:18:22,443 — __main__ — best_score:337 — Scoring best Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:18:22,444 — __main__ — best_score:338 — F1 Score for best Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:18:22,451 — __main__ — best_score:340 — Accuracy Score for best Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:18:22,453 — __main__ — best_score:342 — Precision Score for best Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:18:22,460 — __main__ — best_score:344 — Recall Score for best Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:18:22,467 — __main__ — best_score:346 — RMSE for best Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:18:22,468 — __main__ — best_score:348 — Confusion Matrix for best Histogram-based Gradient Boosting Classification Tree model
+2024-04-25 16:18:22,472 — __main__ — print:450 — Histogram-based Gradient Boosting Classification Tree F1 Score: 0.549133938782411
+2024-04-25 16:18:22,473 — __main__ — print:451 — Histogram-based Gradient Boosting Classification Tree Accuracy: 0.55056
+2024-04-25 16:18:22,473 — __main__ — print:452 — Histogram-based Gradient Boosting Classification Tree Precision: 0.5512078691793733
+2024-04-25 16:18:22,473 — __main__ — print:453 — Histogram-based Gradient Boosting Classification Tree Recall: 0.55056
+2024-04-25 16:18:22,473 — __main__ — print:454 — Histogram-based Gradient Boosting Classification Tree RMSE: 0.6704028639556964
+2024-04-25 16:18:22,473 — __main__ — save_metrics:354 — Saving best metrics to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Metrics - Best.csv'
+2024-04-25 16:18:22,475 — __main__ — save_metrics:361 — Saved best metrics to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Metrics - Best.csv'
+2024-04-25 16:18:22,647 — __main__ — confusion_matrix:417 — Saved best confusion matrix to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Confusion Matrix - Best.png'
+2024-04-25 16:18:22,648 — __main__ — save:420 — Saving model to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Model.pkl'
+2024-04-25 16:18:22,650 — __main__ — save:423 — Saved model to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Model.pkl'
+2024-04-25 16:18:22,651 — __main__ — save:424 — Saving best model to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Model - Best.pkl'
+2024-04-25 16:18:22,654 — __main__ — save:427 — Saved best model to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Model - Best.pkl'
+2024-04-25 16:18:22,654 — __main__ — save:428 — Saving best params to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Parameters - Best.json'
+2024-04-25 16:18:22,655 — __main__ — save:431 — Saved best params to './models/2024-04-25-153421/Histogram-based Gradient Boosting Classification Tree - Parameters - Best.json'
+2024-04-25 16:20:19,021 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/RandomForestClassifier - Accuracy - Learning Curve.png'
+2024-04-25 16:20:20,946 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/MultinomialNB - Accuracy - Learning Curve.png'
+2024-04-25 16:20:52,671 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/HistGradientBoostingClassifier - Accuracy - Learning Curve.png'
+2024-04-25 16:22:49,347 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/RandomForestClassifier - Precision - Learning Curve.png'
+2024-04-25 16:22:51,388 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/MultinomialNB - Precision - Learning Curve.png'
+2024-04-25 16:23:25,448 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/HistGradientBoostingClassifier - Precision - Learning Curve.png'
+2024-04-25 16:25:22,555 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/RandomForestClassifier - Recall - Learning Curve.png'
+2024-04-25 16:25:24,496 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/MultinomialNB - Recall - Learning Curve.png'
+2024-04-25 16:26:00,115 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/HistGradientBoostingClassifier - Recall - Learning Curve.png'
+2024-04-25 16:27:56,510 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/RandomForestClassifier - F1 - Learning Curve.png'
+2024-04-25 16:27:58,493 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/MultinomialNB - F1 - Learning Curve.png'
+2024-04-25 16:28:30,639 — __main__ — learning_curves:843 — Saved learning curve to './models/2024-04-25-153421/HistGradientBoostingClassifier - F1 - Learning Curve.png'
