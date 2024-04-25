@@ -13,8 +13,12 @@ TODO: Make early cancellation optional for networks, as they might be stopping e
 TODO: Output information about network training. DONE
 TODO: Run input string against "best" versions of networks coming from the grid searches. DONE
 TODO: Whatever Conor wanted to do with the raw CSV data.
-TODO: Add model names to confusion matrices.
-TODO: Color code.
+TODO: Add model names to confusion matrices. DONE
+TODO: Color code. DONE
+TODO: Add learning curves. DONE
+TODO: Add logging to file. DONE
+TODO: Add Change UUID to time. DONE
+TODO: Add times to model training. DONE
 '''
 
 import numpy as np
@@ -315,20 +319,35 @@ class Ensemble(Model):
         self.best_predictions = self.best_model.predict(self.x_test)
         
     def score(self) -> None:
+        logger.info(f"Scoring {self.name} model")
+        logger.info(f"F1 Score for {self.name} model")
         self.f1 = f1(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
-        self.accuracy = accuracy(self.y_test, self.predictions)    
-        self.precision = precision(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))   
+        logger.info(f"Accuracy Score for {self.name} model")
+        self.accuracy = accuracy(self.y_test, self.predictions)
+        logger.info(f"Precision Score for {self.name} model")
+        self.precision = precision(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
+        logger.info(f"Recall Score for {self.name} model") 
         self.recall = recall(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
-        self.confusion = confusion(self.y_test, self.predictions)
+        logger.info(f"RMSE for {self.name} model")
         self.rmse = mse(self.y_test, self.predictions, squared = False)
+        logger.info(f"Confusion Matrix for {self.name} model")
+        self.confusion = confusion(self.y_test, self.predictions)
         
     def best_score(self) -> None:
-            self.best_f1 = f1(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
-            self.best_accuracy = accuracy(self.y_test, self.best_predictions)
-            self.best_precision = precision(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
-            self.best_recall = recall(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
-            self.best_confusion = confusion(self.y_test, self.best_predictions)
-            self.best_rmse = mse(self.y_test, self.best_predictions, squared = False)
+        logger.info(f"Scoring best {self.name} model")
+        logger.info(f"F1 Score for best {self.name} model")
+        self.best_f1 = f1(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
+        logger.info(f"Accuracy Score for best {self.name} model")
+        self.best_accuracy = accuracy(self.y_test, self.best_predictions)
+        logger.info(f"Precision Score for best {self.name} model")
+        self.best_precision = precision(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
+        logger.info(f"Recall Score for best {self.name} model")
+        self.best_recall = recall(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
+        logger.info(f"RMSE for best {self.name} model")
+        self.best_rmse = mse(self.y_test, self.best_predictions, squared = False)
+        logger.info(f"Confusion Matrix for best {self.name} model")
+        self.best_confusion = confusion(self.y_test, self.best_predictions)
+
             
     def save_metrics(self, best: bool = False) -> None:
         if best:
@@ -656,6 +675,7 @@ class Agent:
         np.random.seed(parser.data['seed'])
         self.testinput = parser.data['testinput']
         self.models: list[Model] = []
+        self.timer = None
         
     def init_agent(self) -> None:
         if parser.data['uuid'] is None:
@@ -689,7 +709,9 @@ class Agent:
             model.init_model()
             if isinstance(model, NN):
                 model.optimize()
+            self.timer = time.time()
             model.fit()
+            logger.info(f"Training {model.name} model took {time.time() - self.timer} seconds")
             model.predict()
             model.score()
             model.print()
