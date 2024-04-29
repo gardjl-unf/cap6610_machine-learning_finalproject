@@ -82,7 +82,7 @@ MODEL_NAMES = ["Convolutional Neural Network",
                "Histogram-based Gradient Boosting Classification Tree", 
                "Support Vector Machine",
                "Gaussian Naive Bayes"]
-MODEL_CALLS = [rfcn(), mnb(), hgbc(), gnb()]
+MODEL_CALLS = [rfcn(), mnb(), hgbc()]
 DEFAULT_METRIC = "f1_score"
 RMSPROP_CLIP = 10.0
 AVERAGE = "weighted"
@@ -823,7 +823,7 @@ class Agent:
         return data
     
     def _process_flags(self) -> None:
-        algorithms = [CNN, LSTMCNN, RFC, MNB, HGBC, GNB]
+        algorithms = [CNN, LSTMCNN, RFC, MNB, HGBC]
         if not parser.data['neuralnetworks']:
             algorithms.remove(CNN)
             algorithms.remove(LSTMCNN)
@@ -831,7 +831,7 @@ class Agent:
             algorithms.remove(RFC)
             algorithms.remove(MNB)
             algorithms.remove(HGBC)
-            algorithms.remove(GNB)
+            #algorithms.remove(GNB)
             #algorithms.remove(SVC)
             
         return algorithms
