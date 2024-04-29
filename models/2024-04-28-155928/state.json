@@ -1,0 +1,1 @@
+{"test": false, "uuid": "2024-04-28-155928", "seed": 42, "neuralnetworks": true, "ensemble": true, "testinput": null, "cancelearly": false, "testpercentage": 0.2, "epochs": 25}

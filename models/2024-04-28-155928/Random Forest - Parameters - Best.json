@@ -1,0 +1,1 @@
+{"bootstrap": false, "criterion": "entropy", "max_depth": 90, "max_features": "log2", "n_estimators": 1500}

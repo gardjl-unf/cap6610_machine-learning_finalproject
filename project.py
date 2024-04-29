@@ -40,6 +40,7 @@ from tensorflow.keras.datasets import imdb as imdb
 from tensorflow.keras.preprocessing.sequence import pad_sequences as padder
 from tensorflow.keras import callbacks
 from sklearn.naive_bayes import MultinomialNB as mnb
+from sklearn.naive_bayes import GaussianNB as gnb
 from sklearn.ensemble import HistGradientBoostingClassifier as hgbc
 from sklearn.ensemble import RandomForestClassifier as rfcn
 from sklearn.svm import SVC as svc
@@ -79,8 +80,9 @@ MODEL_NAMES = ["Convolutional Neural Network",
                "Random Forest", 
                "Multinomial Naive Bayes", 
                "Histogram-based Gradient Boosting Classification Tree", 
-               "Support Vector Machine"]
-MODEL_CALLS = [rfcn(), mnb(), hgbc()]
+               "Support Vector Machine",
+               "Gaussian Naive Bayes"]
+MODEL_CALLS = [rfcn(), mnb(), hgbc(), gnb()]
 DEFAULT_METRIC = "f1_score"
 RMSPROP_CLIP = 10.0
 AVERAGE = "weighted"
@@ -88,6 +90,7 @@ METRICS = "accuracy"
 BATCH_SIZE = 32
 PADDING_LENGTH = 256
 CV = 10
+CV_SEARCH = 3
 SCORING = "f1_weighted"
 ERROR_SCORE = 0.0
 N_JOBS = -1
@@ -301,16 +304,15 @@ class Ensemble(Model):
         self.params = None
         self.best_params = None
         self.best_model = None
-        self.model_best_score = None
         
     def search(self) -> dict:
+        logger.info(f"Performing grid search for best {self.name} model")
         return gridsearch(self.model, 
                           self.params, 
-                          cv = CV, 
+                          cv = CV_SEARCH, 
                           scoring = SCORING, 
                           error_score = ERROR_SCORE,
-                          n_jobs = N_JOBS,
-                          return_train_score = RETURN_TRAIN_SCORE).fit(self.x_train, self.y_train)
+                          n_jobs = N_JOBS).fit(self.x_train, self.y_train)
         
     def grid_search(self) -> None:
         self.best_params = self.search().best_params_
@@ -318,42 +320,34 @@ class Ensemble(Model):
     def best_predict(self) -> None:
         self.best_predictions = self.best_model.predict(self.x_test)
         
-    def score(self) -> None:
-        logger.info(f"Scoring {self.name} model")
-        logger.info(f"F1 Score for {self.name} model")
-        self.f1 = f1(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
-        logger.info(f"Accuracy Score for {self.name} model")
-        self.accuracy = accuracy(self.y_test, self.predictions)
-        logger.info(f"Precision Score for {self.name} model")
-        self.precision = precision(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
-        logger.info(f"Recall Score for {self.name} model") 
-        self.recall = recall(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
-        logger.info(f"RMSE for {self.name} model")
-        self.rmse = mse(self.y_test, self.predictions, squared = False)
-        logger.info(f"Confusion Matrix for {self.name} model")
-        self.confusion = confusion(self.y_test, self.predictions)
+    def score(self, best : bool = False) -> None:
+        if best:
+            logger.info(f"Scoring best {self.name} model")
+            logger.info(f"F1 Score for best {self.name} model")
+            self.best_f1 = f1(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
+            logger.info(f"Accuracy Score for best {self.name} model")
+            self.best_accuracy = accuracy(self.y_test, self.best_predictions)
+            logger.info(f"Precision Score for best {self.name} model")
+            self.best_precision = precision(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
+            logger.info(f"Recall Score for best {self.name} model")
+            self.best_recall = recall(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
+            logger.info(f"RMSE for best {self.name} model")
+            self.best_rmse = mse(self.y_test, self.best_predictions, squared = False)
+            logger.info(f"Confusion Matrix for best {self.name} model")
+            self.best_confusion = confusion(self.y_test, self.best_predictions)
+        else:
+            self.f1 = f1(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
+            self.accuracy = accuracy(self.y_test, self.predictions)
+            self.precision = precision(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
+            self.recall = recall(self.y_test, self.predictions, average = AVERAGE, labels = np.unique(self.predictions))
+            self.rmse = mse(self.y_test, self.predictions, squared = False)
+            self.confusion = confusion(self.y_test, self.predictions)
         
-    def best_score(self) -> None:
-        logger.info(f"Scoring best {self.name} model")
-        logger.info(f"F1 Score for best {self.name} model")
-        self.best_f1 = f1(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
-        logger.info(f"Accuracy Score for best {self.name} model")
-        self.best_accuracy = accuracy(self.y_test, self.best_predictions)
-        logger.info(f"Precision Score for best {self.name} model")
-        self.best_precision = precision(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
-        logger.info(f"Recall Score for best {self.name} model")
-        self.best_recall = recall(self.y_test, self.best_predictions, average = AVERAGE, labels = np.unique(self.best_predictions))
-        logger.info(f"RMSE for best {self.name} model")
-        self.best_rmse = mse(self.y_test, self.best_predictions, squared = False)
-        logger.info(f"Confusion Matrix for best {self.name} model")
-        self.best_confusion = confusion(self.y_test, self.best_predictions)
-
-            
     def save_metrics(self, best: bool = False) -> None:
         if best:
             logger.info(f"Saving best metrics to './models/{self.uuid}/{self.name} - Metrics - Best.csv'")
             metrics = pd.DataFrame({"Best F1 Score": [self.best_f1],
-                                    "BestAccuracy": [self.best_accuracy],
+                                    "Best Accuracy": [self.best_accuracy],
                                     "Best Precision": [self.best_precision],
                                     "Best Recall": [self.best_recall],
                                     "Best RMSE": [self.best_rmse]})
@@ -447,17 +441,20 @@ class Ensemble(Model):
     
     def print(self, best: bool = False) -> None:
         if best:
-            logger.info(f"{self.name} F1 Score: {self.best_f1}")
-            logger.info(f"{self.name} Accuracy: {self.best_accuracy}")
-            logger.info(f"{self.name} Precision: {self.best_precision}")
-            logger.info(f"{self.name} Recall: {self.best_recall}")
-            logger.info(f"{self.name} RMSE: {self.best_rmse}")
+            logger.info(f"Best {self.name} F1 Score: {self.best_f1}")
+            logger.info(f"Best {self.name} Accuracy: {self.best_accuracy}")
+            logger.info(f"Best {self.name} Precision: {self.best_precision}")
+            logger.info(f"Best {self.name} Recall: {self.best_recall}")
+            logger.info(f"Best {self.name} RMSE: {self.best_rmse}")
         else:
-            logger.info(f"{self.name} Best F1 Score: {self.f1}")
-            logger.info(f"{self.name} Best Accuracy: {self.accuracy}")
-            logger.info(f"{self.name} Best Precision: {self.precision}")
-            logger.info(f"{self.name} Best Recall: {self.recall}")
-            logger.info(f"{self.name} Best RMSE: {self.rmse}")
+            logger.info(f"{self.name} F1 Score: {self.f1}")
+            logger.info(f"{self.name} Accuracy: {self.accuracy}")
+            logger.info(f"{self.name} Precision: {self.precision}")
+            logger.info(f"{self.name} Recall: {self.recall}")
+            logger.info(f"{self.name} RMSE: {self.rmse}")
+            
+    def print_best_params(self) -> None:
+        logger.info(f"Best parameters for {self.name} model: {self.best_params}")
             
 class CNN(NN):
     def __init__(self) -> None:
@@ -512,21 +509,41 @@ class SVC(Ensemble):
         
     def grid_search(self) -> None:
         self.best_params = self.search().best_params_
+
         
     def best_fit(self) -> None:
         self.best_model = svc(C = self.best_params['C'],
                              kernel = self.best_params['kernel'],
                              gamma = self.best_params['gamma'])
         self.best_model.fit(self.x_train, self.y_train)
+        
+class GNB(Ensemble):
+    def __init__(self) -> None:
+        super().__init__()
+        self.name = MODEL_NAMES[6]
+        self.params = { 'var_smoothing': np.logspace(0,-9, num = 10) }
+        
+    def init_model(self) -> None:
+        self.model = gnb(var_smoothing = self.params['var_smoothing'][0])
+        
+    def grid_search(self) -> None:
+        self.best_params = self.search().best_params_
+        
+    def best_fit(self) -> None:
+        self.best_model = gnb(var_smoothing = self.best_params['var_smoothing'])
+        self.best_model.fit(self.x_train, self.y_train)
     
 class MNB(Ensemble):
     def __init__(self) -> None:
         super().__init__()
         self.name = MODEL_NAMES[3]
-        self.params = { 'alpha': [ 1.0, 0.5, 0.1 ] }
+        self.params = { 'alpha': [ 1.0, 0.9, 0.75, 0.5, 0.25, 0.1 ] }
         
     def init_model(self) -> None:
         self.model = mnb(alpha = self.params['alpha'][0])
+        
+    def grid_search(self) -> None:
+        self.best_params = self.search().best_params_
         
     def best_fit(self) -> None:
         self.best_model = mnb(alpha = self.best_params['alpha'])
@@ -536,15 +553,20 @@ class RFC(Ensemble):
     def __init__(self) -> None:
         super().__init__()
         self.name = MODEL_NAMES[2]
-        self.params = { 'n_estimators': [ 100, 200, 300 ],
-                        'max_depth': [ 10, 20, 30 ],
+        self.params = { 'bootstrap': [True, False],
+                        'max_depth': [10, 50, 90],
+                        'max_features': [ 'sqrt', 'log2' ],
+                        'n_estimators': [ 100, 500, 1500 ],
                         'criterion': [ 'gini', 'entropy' ]
                       }
         
     def init_model(self) -> None:
         self.model = rfcn(n_estimators = self.params['n_estimators'][0], 
                           max_depth = self.params['max_depth'][0], 
-                          criterion = self.params['criterion'][0])
+                          criterion = self.params['criterion'][0],
+                            max_features = self.params['max_features'][0],
+                            bootstrap = self.params['bootstrap'][0])
+        
         
     def grid_search(self) -> None:
         self.best_params = self.search().best_params_
@@ -552,15 +574,17 @@ class RFC(Ensemble):
     def best_fit(self) -> None:
         self.best_model = rfcn(n_estimators = self.best_params['n_estimators'], 
                                max_depth = self.best_params['max_depth'], 
-                               criterion = self.best_params['criterion'])
+                               criterion = self.best_params['criterion'],
+                                max_features = self.best_params['max_features'],
+                                bootstrap = self.best_params['bootstrap'])
         self.best_model.fit(self.x_train, self.y_train)
         
 class HGBC(Ensemble):
     def __init__(self) -> None:
         super().__init__()
         self.name = MODEL_NAMES[4]
-        self.params = { 'max_iter': [ 100, 200, 300 ],
-                        'max_depth': [ 10, 20, 30 ],
+        self.params = { 'max_iter': [ 100, 300, 500 ],
+                        'max_depth': [ 10, 50, 90 ],
                         'learning_rate': [ 0.1, 0.01, 0.001 ]
                       }
         
@@ -722,9 +746,10 @@ class Agent:
                 model.best_fit()
                 logger.info(f"Training {model.name} model took {time.time() - self.timer} seconds")
                 model.best_predict()
-                model.best_score()
+                model.score(best = True)
                 model.print(best = True)
                 model.save_metrics(best = True)
+                model.print_best_params()
             self.models.append(model)
             model.save()
         self.learning_curves()
@@ -798,7 +823,7 @@ class Agent:
         return data
     
     def _process_flags(self) -> None:
-        algorithms = [CNN, LSTMCNN, RFC, MNB, HGBC]
+        algorithms = [CNN, LSTMCNN, RFC, MNB, HGBC, GNB]
         if not parser.data['neuralnetworks']:
             algorithms.remove(CNN)
             algorithms.remove(LSTMCNN)
@@ -806,6 +831,7 @@ class Agent:
             algorithms.remove(RFC)
             algorithms.remove(MNB)
             algorithms.remove(HGBC)
+            algorithms.remove(GNB)
             #algorithms.remove(SVC)
             
         return algorithms
